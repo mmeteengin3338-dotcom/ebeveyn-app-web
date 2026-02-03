@@ -1,0 +1,127 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  /* Tema */
+  --bg: #e8bfcf; /* toz pembe */
+  --text: #111111;
+  --muted: #4b5563;
+
+  /* Premium yüzey */
+  --card: rgba(255, 255, 255, 0.86);
+  --card2: rgba(255, 255, 255, 0.72);
+  --border: rgba(17, 24, 39, 0.08);
+  --shadow: 0 18px 55px rgba(17, 24, 39, 0.14);
+
+  /* Aksiyon */
+  --primary: #d99aaa;
+  --primaryHover: #c9879a;
+}
+
+html,
+body {
+  height: 100%;
+}
+
+body {
+  background: radial-gradient(
+      900px 500px at 20% 0%,
+      rgba(255, 255, 255, 0.35),
+      transparent 60%
+    ),
+    radial-gradient(
+      900px 500px at 80% 20%,
+      rgba(255, 255, 255, 0.22),
+      transparent 60%
+    ),
+    var(--bg);
+  color: var(--text);
+  font-family: ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto;
+}
+
+/* Genel */
+a {
+  color: inherit;
+}
+a:hover {
+  opacity: 0.92;
+}
+
+/* Container */
+.container-app {
+  max-width: 1120px;
+  margin: 0 auto;
+  padding: 28px;
+}
+
+/* Premium Card */
+.card {
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: 24px;
+  box-shadow: var(--shadow);
+}
+
+.card-soft {
+  background: var(--card2);
+  border: 1px solid var(--border);
+  border-radius: 24px;
+  box-shadow: 0 10px 28px rgba(17, 24, 39, 0.1);
+}
+
+/* Inputs */
+input,
+textarea,
+select {
+  width: 100%;
+  background: rgba(255, 255, 255, 0.9);
+  color: var(--text);
+  border: 1px solid var(--border);
+  border-radius: 16px;
+  padding: 12px 14px;
+  outline: none;
+}
+input::placeholder,
+textarea::placeholder {
+  color: rgba(75, 85, 99, 0.9);
+}
+input:focus,
+textarea:focus,
+select:focus {
+  border-color: rgba(217, 154, 170, 0.55);
+  box-shadow: 0 0 0 6px rgba(217, 154, 170, 0.2);
+}
+
+/* Buttons */
+.btn-primary {
+  background: var(--primary);
+  color: white;
+  border-radius: 16px;
+  padding: 12px 16px;
+  font-weight: 800;
+  transition: 0.2s ease;
+  box-shadow: 0 12px 30px rgba(217, 154, 170, 0.28);
+}
+.btn-primary:hover {
+  background: var(--primaryHover);
+  transform: translateY(-1px);
+}
+
+.btn-ghost {
+  background: rgba(255, 255, 255, 0.7);
+  border: 1px solid var(--border);
+  color: var(--text);
+  border-radius: 16px;
+  padding: 10px 14px;
+  font-weight: 700;
+  transition: 0.2s ease;
+}
+.btn-ghost:hover {
+  background: rgba(255, 255, 255, 0.9);
+}
+
+/* Small helpers */
+.text-muted {
+  color: var(--muted);
+}
