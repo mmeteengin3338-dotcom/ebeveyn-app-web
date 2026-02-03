@@ -14,7 +14,13 @@ type Product = {
   owner_avatar_url?: string | null
 }
 
-export default function ProductCard({ product }: { product: Product }) {
+export default function ProductCard({
+  product,
+  variant = "home",
+}: {
+  product: Product
+  variant?: "home" | "profile"
+}) {
   const realId = String(product?.id ?? "").trim()
   const safeId = encodeURIComponent(realId)
   const profileHandle = (product.owner_username || product.owner_email || "").trim()
@@ -28,28 +34,29 @@ export default function ProductCard({ product }: { product: Product }) {
   const imageSrc = firstGalleryImage || (product?.image_url && product.image_url.trim().length > 0
       ? product.image_url
       : "/products/placeholder.jpg")
+  const imageHeightClass = variant === "profile" ? "h-64" : "h-56"
 
   return (
     <div className="overflow-hidden rounded-2xl border border-black/10 bg-white shadow-md">
       {profileHref ? (
         <Link href={profileHref} className="block">
-          <div className="relative h-56 w-full bg-black/5">
+          <div className={`relative w-full bg-gradient-to-br from-pink-50 to-rose-50 ${imageHeightClass}`}>
             <Image
               src={imageSrc}
               alt={product?.title || "Urun"}
               fill
-              className="object-cover"
+              className="object-contain p-2"
               sizes="(max-width: 640px) 100vw, (max-width: 1024px) 50vw, 33vw"
             />
           </div>
         </Link>
       ) : (
-        <div className="relative h-56 w-full bg-black/5">
+        <div className={`relative w-full bg-gradient-to-br from-pink-50 to-rose-50 ${imageHeightClass}`}>
           <Image
             src={imageSrc}
             alt={product?.title || "Urun"}
             fill
-            className="object-cover"
+            className="object-contain p-2"
             sizes="(max-width: 640px) 100vw, (max-width: 1024px) 50vw, 33vw"
           />
         </div>

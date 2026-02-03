@@ -12,6 +12,7 @@ type OwnerProduct = {
   title: string
   daily_price: number
   image_url?: string | null
+  image_urls?: string[] | null
   description?: string | null
   tags?: string[] | null
   owner_email?: string | null
@@ -357,12 +358,14 @@ export default function ProfilePage() {
                     title: p.title,
                     daily_price: p.daily_price,
                     image_url: p.image_url,
+                    image_urls: p.image_urls,
                     description: p.description,
                     tags: p.tags,
                     owner_email: userEmail,
                     owner_username: username || p.owner_username || null,
                     owner_avatar_url: avatarUrl || p.owner_avatar_url || null,
                   }}
+                  variant="profile"
                 />
                 <button
                   className="w-full rounded-lg border border-red-300 bg-red-50 px-3 py-2 text-sm text-red-700 disabled:opacity-60"

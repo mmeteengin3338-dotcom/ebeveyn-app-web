@@ -11,6 +11,7 @@ type ProductListItem = {
   title: string
   daily_price: number
   image_url?: string | null
+  image_urls?: string[] | null
   description?: string | null
   tags?: string[] | null
   features?: string[] | null
@@ -169,7 +170,7 @@ export default function PublicProfilePage() {
 
         <div className="mt-4 grid grid-cols-1 gap-6 sm:grid-cols-2 lg:grid-cols-3">
           {products.map((product) => (
-            <ProductCard key={product.id} product={product} />
+            <ProductCard key={product.id} product={product} variant="profile" />
           ))}
         </div>
       </div>

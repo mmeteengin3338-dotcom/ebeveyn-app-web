@@ -405,12 +405,12 @@ export default function ProductDetailClient({ id }: { id: string }) {
             }}
           >
             {galleryUrls.map((url, idx) => (
-              <div key={`${url}-${idx}`} className="relative h-80 min-w-full snap-start">
+              <div key={`${url}-${idx}`} className="relative h-80 min-w-full snap-start bg-gradient-to-br from-pink-50 to-rose-50">
                 <Image
                   src={url}
                   alt={`${product.title} ${idx + 1}`}
                   fill
-                  className="object-cover"
+                  className="object-contain p-2"
                   sizes="(max-width: 1024px) 100vw, 1024px"
                 />
               </div>
