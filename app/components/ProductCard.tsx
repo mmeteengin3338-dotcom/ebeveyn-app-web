@@ -23,6 +23,7 @@ export default function ProductCard({
 }) {
   const realId = String(product?.id ?? "").trim()
   const safeId = encodeURIComponent(realId)
+  const productHref = `/product/${safeId}`
   const profileHandle = (product.owner_username || product.owner_email || "").trim()
   const profileHref = profileHandle
     ? `/profile/${encodeURIComponent(profileHandle)}`
@@ -38,19 +39,7 @@ export default function ProductCard({
 
   return (
     <div className="overflow-hidden rounded-2xl border border-black/10 bg-white shadow-md">
-      {profileHref ? (
-        <Link href={profileHref} className="block">
-          <div className={`relative w-full bg-gradient-to-br from-pink-50 to-rose-50 ${imageHeightClass}`}>
-            <Image
-              src={imageSrc}
-              alt={product?.title || "Urun"}
-              fill
-              className="object-contain p-2"
-              sizes="(max-width: 640px) 100vw, (max-width: 1024px) 50vw, 33vw"
-            />
-          </div>
-        </Link>
-      ) : (
+      <Link href={productHref} className="block">
         <div className={`relative w-full bg-gradient-to-br from-pink-50 to-rose-50 ${imageHeightClass}`}>
           <Image
             src={imageSrc}
@@ -60,7 +49,7 @@ export default function ProductCard({
             sizes="(max-width: 640px) 100vw, (max-width: 1024px) 50vw, 33vw"
           />
         </div>
-      )}
+      </Link>
 
       <div className="p-5">
         {profileHref && (product.owner_username || product.owner_avatar_url) ? (
@@ -86,17 +75,15 @@ export default function ProductCard({
           </Link>
         ) : null}
 
-        {profileHref ? (
-          <Link href={profileHref}>
-            <h3 className="line-clamp-1 text-xl font-bold text-black hover:underline">{product.title}</h3>
-          </Link>
-        ) : (
-          <h3 className="line-clamp-1 text-xl font-bold text-black">{product.title}</h3>
-        )}
+        <Link href={productHref}>
+          <h3 className="line-clamp-1 text-xl font-bold text-black hover:underline">{product.title}</h3>
+        </Link>
 
-        <p className="mt-2 line-clamp-2 text-sm text-black/70">
-          {product.description || "Aciklama eklenmemis."}
-        </p>
+        <Link href={productHref} className="block">
+          <p className="mt-2 line-clamp-2 text-sm text-black/70 hover:underline">
+            {product.description || "Aciklama eklenmemis."}
+          </p>
+        </Link>
 
         <div className="mt-3 flex items-center justify-between gap-3">
           <span className="font-semibold text-black">Gunluk: {product.daily_price} TL</span>
