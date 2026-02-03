@@ -11,6 +11,10 @@ type MsgLite = {
   receiver_email?: string | null
   read_at?: string | null
 }
+type RentalLite = {
+  id?: string | null
+  status?: string | null
+}
 
 export default function Navbar() {
   const router = useRouter()
@@ -19,6 +23,7 @@ export default function Navbar() {
   const [menuOpen, setMenuOpen] = useState(false)
   const [unreadCount, setUnreadCount] = useState(0)
   const [pendingRentalCount, setPendingRentalCount] = useState(0)
+  const [rentalUpdateCount, setRentalUpdateCount] = useState(0)
   const [searchInput, setSearchInput] = useState("")
 
   useEffect(() => {
@@ -85,6 +90,30 @@ export default function Navbar() {
         const rentalsJson = (await rentalsRes.json().catch(() => ({}))) as { rentals?: unknown[] }
         const pending = Array.isArray(rentalsJson.rentals) ? rentalsJson.rentals.length : 0
         if (active) setPendingRentalCount(pending)
+
+        const outgoingRes = await fetch("/api/rentals", {
+          cache: "no-store",
+          headers: { Authorization: `Bearer ${token}` },
+        })
+        if (!outgoingRes.ok) return
+        const outgoingJson = (await outgoingRes.json().catch(() => ({}))) as { rentals?: RentalLite[] }
+        const outgoing = Array.isArray(outgoingJson.rentals) ? outgoingJson.rentals : []
+        const seenKey = `seen_rental_status_ids:${me}`
+        let seenRentalIds = new Set<string>()
+        try {
+          const raw = window.localStorage.getItem(seenKey)
+          const parsed = raw ? (JSON.parse(raw) as string[]) : []
+          seenRentalIds = new Set(Array.isArray(parsed) ? parsed : [])
+        } catch {
+          seenRentalIds = new Set<string>()
+        }
+
+        const updates = outgoing.filter((r) => {
+          const status = String(r.status || "").toLowerCase()
+          const id = String(r.id || "")
+          return (status === "approved" || status === "rejected") && !!id && !seenRentalIds.has(id)
+        }).length
+        if (active) setRentalUpdateCount(updates)
       } catch {
         // no-op: keep last known badge state
       }
@@ -112,7 +141,7 @@ export default function Navbar() {
     }
   }, [])
 
-  const menuAlertCount = unreadCount + pendingRentalCount
+  const menuAlertCount = unreadCount + pendingRentalCount + rentalUpdateCount
 
   function submitSearch(e: React.FormEvent) {
     e.preventDefault()
@@ -257,9 +286,9 @@ export default function Navbar() {
                     onClick={() => setMenuOpen(false)}
                   >
                     <span>Kiralamalarim</span>
-                    {pendingRentalCount > 0 ? (
+                    {pendingRentalCount + rentalUpdateCount > 0 ? (
                       <span className="absolute right-3 top-1/2 -translate-y-1/2 rounded-full bg-rose-600 px-2 py-0.5 text-[11px] font-semibold text-white">
-                        {pendingRentalCount}
+                        {pendingRentalCount + rentalUpdateCount}
                       </span>
                     ) : null}
                   </Link>

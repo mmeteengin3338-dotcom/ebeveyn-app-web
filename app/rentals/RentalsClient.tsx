@@ -4,12 +4,14 @@ import { useCallback, useEffect, useState } from "react"
 import { useRouter } from "next/navigation"
 import { supabase } from "@/app/lib/supabaseClient"
 import { rentalStatusLabelTr, type Rental, type RentalStatus } from "@/app/lib/rentals"
+import { useAuth } from "@/app/context/AuthContext"
 
 type RentalsTab = "outgoing" | "incoming"
 type IncomingStatus = Extract<RentalStatus, "approved" | "rejected">
 
 export default function RentalsClient() {
   const router = useRouter()
+  const { userEmail } = useAuth()
   const [tab, setTab] = useState<RentalsTab>("outgoing")
   const [outgoingItems, setOutgoingItems] = useState<Rental[]>([])
   const [incomingItems, setIncomingItems] = useState<Rental[]>([])
@@ -122,6 +124,25 @@ export default function RentalsClient() {
     loadOutgoing()
     loadIncoming()
   }, [loadIncoming, loadOutgoing])
+
+  useEffect(() => {
+    if (!userEmail || outgoingItems.length === 0) return
+    const seenKey = `seen_rental_status_ids:${userEmail.toLowerCase()}`
+    const idsToMarkSeen = outgoingItems
+      .filter((r) => r.status === "approved" || r.status === "rejected")
+      .map((r) => String(r.id || ""))
+      .filter(Boolean)
+    if (idsToMarkSeen.length === 0) return
+
+    try {
+      const raw = window.localStorage.getItem(seenKey)
+      const prev = raw ? (JSON.parse(raw) as string[]) : []
+      const merged = Array.from(new Set([...(Array.isArray(prev) ? prev : []), ...idsToMarkSeen]))
+      window.localStorage.setItem(seenKey, JSON.stringify(merged.slice(-500)))
+    } catch {
+      // best-effort cache
+    }
+  }, [outgoingItems, userEmail])
 
   async function updateIncomingStatus(id: string, status: IncomingStatus) {
     const actionLabel = status === "approved" ? "onaylamak" : "reddetmek"
