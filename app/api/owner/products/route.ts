@@ -75,17 +75,20 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: "image_url gecerli bir http(s) URL olmalidir" }, { status: 400 })
     }
 
-    // Prefer service role for stable inserts; fallback to user token when key is missing in local env.
+    const auth = request.headers.get("authorization") || ""
+    const token = auth.startsWith("Bearer ") ? auth.slice(7).trim() : ""
+
+    // Prefer service role for stable inserts; fallback to user token when key is missing/misconfigured.
     let dbClient: ReturnType<typeof createServiceRoleClient> | ReturnType<typeof createUserTokenClient>
+    let usedServiceRole = false
     try {
       dbClient = createServiceRoleClient()
+      usedServiceRole = true
     } catch {
-      const auth = request.headers.get("authorization") || ""
-      const token = auth.startsWith("Bearer ") ? auth.slice(7).trim() : ""
       dbClient = createUserTokenClient(token)
     }
 
-    const insertResult = await dbClient
+    let insertResult = await dbClient
       .from("products")
       .insert({
         title,
@@ -98,6 +101,28 @@ export async function POST(request: Request) {
       })
       .select("*")
       .single()
+
+    // If service key is wrong (e.g. anon key set as service key), retry with user token + RLS policies.
+    if (
+      usedServiceRole &&
+      insertResult.error &&
+      /row-level security|permission denied/i.test(insertResult.error.message) &&
+      token
+    ) {
+      insertResult = await createUserTokenClient(token)
+        .from("products")
+        .insert({
+          title,
+          daily_price,
+          image_url,
+          description,
+          tags,
+          features,
+          owner_email: guard.email,
+        })
+        .select("*")
+        .single()
+    }
 
     if (insertResult.error) return NextResponse.json({ error: insertResult.error.message }, { status: 500 })
     return NextResponse.json({ product: insertResult.data })
