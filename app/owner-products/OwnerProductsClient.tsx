@@ -144,6 +144,25 @@ export default function OwnerProductsClient() {
     setSelectedTags((prev) => (prev.includes(tag) ? prev.filter((t) => t !== tag) : [...prev, tag]))
   }
 
+  function addSelectedFiles(fileList: FileList | null) {
+    if (!fileList || fileList.length === 0) return
+    const incoming = Array.from(fileList)
+    setFiles((prev) => {
+      const map = new Map<string, File>()
+      for (const f of prev) {
+        map.set(`${f.name}-${f.size}-${f.lastModified}`, f)
+      }
+      for (const f of incoming) {
+        map.set(`${f.name}-${f.size}-${f.lastModified}`, f)
+      }
+      return Array.from(map.values())
+    })
+  }
+
+  function removeSelectedFile(index: number) {
+    setFiles((prev) => prev.filter((_, i) => i !== index))
+  }
+
   async function loadMyProducts() {
     setListLoading(true)
     try {
@@ -276,19 +295,31 @@ export default function OwnerProductsClient() {
             type="file"
             multiple
             accept="image/*"
-            onChange={(e) => setFiles(Array.from(e.target.files ?? []))}
+            onChange={(e) => {
+              addSelectedFiles(e.target.files)
+              e.currentTarget.value = ""
+            }}
           />
-          <p className="text-muted mt-2 text-xs">Giris yapan kullanici urun gorseli yukleyebilir.</p>
+          <p className="text-muted mt-2 text-xs">Yeni secilen foto, oncekilerin ustune eklenir.</p>
 
           {previewUrls.length > 0 ? (
             <div className="mt-3 grid grid-cols-2 gap-3 md:grid-cols-4">
               {previewUrls.map((url, i) => (
-                <img
-                  key={`${url}-${i}`}
-                  src={url}
-                  alt={`Secilen urun gorseli ${i + 1}`}
-                  className="h-28 w-full rounded-xl border object-cover"
-                />
+                <div key={`${url}-${i}`} className="relative">
+                  <img
+                    src={url}
+                    alt={`Secilen urun gorseli ${i + 1}`}
+                    className="h-28 w-full rounded-xl border object-cover"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => removeSelectedFile(i)}
+                    className="absolute right-1 top-1 rounded-full bg-black/70 px-2 py-0.5 text-xs font-bold text-white hover:bg-black"
+                    aria-label={`Fotograf ${i + 1} sil`}
+                  >
+                    X
+                  </button>
+                </div>
               ))}
             </div>
           ) : null}
