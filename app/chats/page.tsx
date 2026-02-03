@@ -1,7 +1,7 @@
 "use client"
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react"
-import { useRouter, useSearchParams } from "next/navigation"
+import { useRouter } from "next/navigation"
 import Link from "next/link"
 import Image from "next/image"
 import { supabase } from "@/app/lib/supabaseClient"
@@ -58,7 +58,6 @@ function DeliveryTicks({ status }: { status: DeliveryStatus }) {
 
 export default function ChatsPage() {
   const router = useRouter()
-  const searchParams = useSearchParams()
   const { isLoggedIn, userEmail } = useAuth()
 
   const [loading, setLoading] = useState(true)
@@ -70,6 +69,8 @@ export default function ChatsPage() {
   const [text, setText] = useState("")
   const [sending, setSending] = useState(false)
   const [selectedProductId, setSelectedProductId] = useState("")
+  const [requestedProduct, setRequestedProduct] = useState("")
+  const [requestedPeer, setRequestedPeer] = useState("")
   const conversationsInFlightRef = useRef(false)
   const threadInFlightRef = useRef(false)
 
@@ -86,8 +87,12 @@ export default function ChatsPage() {
     }
   }, [userEmail])
 
-  const requestedProduct = useMemo(() => String(searchParams.get("product") || "").trim(), [searchParams])
-  const requestedPeer = useMemo(() => String(searchParams.get("peer") || "").trim().toLowerCase(), [searchParams])
+  useEffect(() => {
+    if (typeof window === "undefined") return
+    const params = new URLSearchParams(window.location.search)
+    setRequestedProduct(String(params.get("product") || "").trim())
+    setRequestedPeer(String(params.get("peer") || "").trim().toLowerCase())
+  }, [])
 
   const conversations = useMemo<Conversation[]>(() => {
     if (!userEmail) return []

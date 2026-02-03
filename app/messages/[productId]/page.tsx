@@ -1,7 +1,7 @@
 "use client"
 
 import { useCallback, useEffect, useMemo, useState } from "react"
-import { useParams, useRouter, useSearchParams } from "next/navigation"
+import { useParams, useRouter } from "next/navigation"
 import { supabase } from "@/app/lib/supabaseClient"
 import { useAuth } from "@/app/context/AuthContext"
 
@@ -16,17 +16,18 @@ type ThreadMessage = {
 export default function ProductMessagePage() {
   const router = useRouter()
   const params = useParams<{ productId: string }>()
-  const searchParams = useSearchParams()
   const { isLoggedIn, userEmail } = useAuth()
 
   const productId = useMemo(() => String(params?.productId || "").trim(), [params?.productId])
-  const peerFromUrl = useMemo(
-    () => String(searchParams.get("peer") || searchParams.get("owner") || "").trim().toLowerCase(),
-    [searchParams]
-  )
+  const [peerFromUrl, setPeerFromUrl] = useState("")
+  useEffect(() => {
+    if (typeof window === "undefined") return
+    const params = new URLSearchParams(window.location.search)
+    setPeerFromUrl(String(params.get("peer") || params.get("owner") || "").trim().toLowerCase())
+  }, [])
 
   const [productTitle, setProductTitle] = useState("")
-  const [peerEmail] = useState(peerFromUrl)
+  const [peerEmail, setPeerEmail] = useState("")
   const [items, setItems] = useState<ThreadMessage[]>([])
   const [text, setText] = useState("")
   const [loading, setLoading] = useState(true)
@@ -75,6 +76,10 @@ export default function ProductMessagePage() {
       setLoading(false)
     }
   }, [peerEmail, productId, router])
+
+  useEffect(() => {
+    setPeerEmail(peerFromUrl)
+  }, [peerFromUrl])
 
   useEffect(() => {
     if (!isLoggedIn) {

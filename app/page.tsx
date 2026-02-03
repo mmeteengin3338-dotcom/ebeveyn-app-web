@@ -3,7 +3,6 @@
 import { useEffect, useMemo, useRef, useState } from "react"
 import Image from "next/image"
 import Link from "next/link"
-import { useSearchParams } from "next/navigation"
 import ProductCard from "./components/ProductCard"
 import { useAuth } from "./context/AuthContext"
 import { TAG_OPTIONS } from "./lib/tags"
@@ -23,7 +22,6 @@ type ProductListItem = {
 }
 
 export default function HomePage() {
-  const searchParams = useSearchParams()
   const { userEmail } = useAuth()
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState("")
@@ -129,10 +127,11 @@ export default function HomePage() {
   }, [])
 
   useEffect(() => {
-    const q = String(searchParams.get("q") || "").trim()
+    if (typeof window === "undefined") return
+    const q = String(new URLSearchParams(window.location.search).get("q") || "").trim()
     setSearchDraft(q)
     setSearchApplied(q)
-  }, [searchParams])
+  }, [])
 
   const filteredProducts = useMemo(() => {
     const base = appliedTags.length === 0

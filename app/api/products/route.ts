@@ -19,22 +19,30 @@ export async function GET(request: Request) {
       return ownerEmail ? await query.eq("owner_email", ownerEmail) : await query
     }
 
-    let { data, error } = await runQuery(
+    const initial = await runQuery(
       "id,title,daily_price,image_url,description,tags,features,created_at,owner_email,view_count"
     )
-    if (error && /view_count/i.test(error.message)) {
+    let queryError = initial.error
+    let productsData = (Array.isArray(initial.data) ? initial.data : []) as unknown as Array<
+      Record<string, unknown>
+    >
+
+    if (queryError && /view_count/i.test(queryError.message)) {
       const fallback = await runQuery(
         "id,title,daily_price,image_url,description,tags,features,created_at,owner_email"
       )
-      data = (fallback.data ?? []).map((p) => ({ ...p, view_count: 0 }))
-      error = fallback.error
+      productsData = ((fallback.data ?? []) as unknown as Array<Record<string, unknown>>).map((p) => ({
+        ...p,
+        view_count: 0,
+      }))
+      queryError = fallback.error
     }
 
-    if (error) {
-      return NextResponse.json({ error: error.message }, { status: 500 })
+    if (queryError) {
+      return NextResponse.json({ error: queryError.message }, { status: 500 })
     }
 
-    const products = data ?? []
+    const products = productsData
     const ownerEmails = Array.from(
       new Set(
         products
@@ -45,10 +53,12 @@ export async function GET(request: Request) {
 
     let profileByEmail = new Map<string, { username: string | null; avatar_url: string | null }>()
     if (ownerEmails.length > 0) {
-      let { data: profileRows, error: profileError } = await supabase
+      const profilesInitial = await supabase
         .from("profiles")
         .select("email,username,avatar_url")
         .in("email", ownerEmails)
+      let profileError = profilesInitial.error
+      let profileRows = (profilesInitial.data ?? []) as unknown as Array<Record<string, unknown>>
 
       // Backward compatibility for profiles table without avatar_url column.
       if (profileError && /avatar_url/i.test(profileError.message)) {
@@ -56,7 +66,7 @@ export async function GET(request: Request) {
           .from("profiles")
           .select("email,username")
           .in("email", ownerEmails)
-        profileRows = fallback.data
+        profileRows = (fallback.data ?? []) as unknown as Array<Record<string, unknown>>
         profileError = fallback.error
       }
 

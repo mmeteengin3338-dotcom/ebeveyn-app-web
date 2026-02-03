@@ -2,7 +2,7 @@
 
 import Link from "next/link"
 import { useEffect, useState } from "react"
-import { usePathname, useRouter, useSearchParams } from "next/navigation"
+import { usePathname, useRouter } from "next/navigation"
 import { useAuth } from "../context/AuthContext"
 import { supabase } from "../lib/supabaseClient"
 
@@ -15,11 +15,16 @@ type MsgLite = {
 export default function Navbar() {
   const router = useRouter()
   const pathname = usePathname()
-  const searchParams = useSearchParams()
   const { user, signOut, loading } = useAuth()
   const [menuOpen, setMenuOpen] = useState(false)
   const [unreadCount, setUnreadCount] = useState(0)
-  const [searchInput, setSearchInput] = useState(() => String(searchParams.get("q") || ""))
+  const [searchInput, setSearchInput] = useState("")
+
+  useEffect(() => {
+    if (typeof window === "undefined") return
+    const q = new URLSearchParams(window.location.search).get("q") || ""
+    setSearchInput(String(q))
+  }, [pathname])
 
   useEffect(() => {
     let active = true
