@@ -18,6 +18,7 @@ export default function Navbar() {
   const { user, signOut, loading } = useAuth()
   const [menuOpen, setMenuOpen] = useState(false)
   const [unreadCount, setUnreadCount] = useState(0)
+  const [pendingRentalCount, setPendingRentalCount] = useState(0)
   const [searchInput, setSearchInput] = useState("")
 
   useEffect(() => {
@@ -32,7 +33,10 @@ export default function Navbar() {
 
     async function loadUnreadCount() {
       if (!user?.email) {
-        if (active) setUnreadCount(0)
+        if (active) {
+          setUnreadCount(0)
+          setPendingRentalCount(0)
+        }
         return
       }
 
@@ -72,6 +76,15 @@ export default function Navbar() {
         }
 
         if (active) setUnreadCount(unread)
+
+        const rentalsRes = await fetch("/api/owner-rentals?status=pending", {
+          cache: "no-store",
+          headers: { Authorization: `Bearer ${token}` },
+        })
+        if (!rentalsRes.ok) return
+        const rentalsJson = (await rentalsRes.json().catch(() => ({}))) as { rentals?: unknown[] }
+        const pending = Array.isArray(rentalsJson.rentals) ? rentalsJson.rentals.length : 0
+        if (active) setPendingRentalCount(pending)
       } catch {
         // no-op: keep last known badge state
       }
@@ -98,6 +111,8 @@ export default function Navbar() {
       window.removeEventListener("unread-count-changed", onUnreadCountChanged as EventListener)
     }
   }, [])
+
+  const menuAlertCount = unreadCount + pendingRentalCount
 
   function submitSearch(e: React.FormEvent) {
     e.preventDefault()
@@ -128,7 +143,7 @@ export default function Navbar() {
               aria-label="Menuyu ac"
             >
               &#9776;
-              {unreadCount > 0 ? (
+              {menuAlertCount > 0 ? (
                 <span className="absolute -right-1 -top-1 h-3 w-3 rounded-full border-2 border-white bg-rose-600" />
               ) : null}
             </button>
@@ -238,10 +253,15 @@ export default function Navbar() {
                   </Link>
                   <Link
                     href="/rentals"
-                    className={menuTabClass("/rentals")}
+                    className={`${menuTabClass("/rentals")} relative`}
                     onClick={() => setMenuOpen(false)}
                   >
-                    Kiralamalarim
+                    <span>Kiralamalarim</span>
+                    {pendingRentalCount > 0 ? (
+                      <span className="absolute right-3 top-1/2 -translate-y-1/2 rounded-full bg-rose-600 px-2 py-0.5 text-[11px] font-semibold text-white">
+                        {pendingRentalCount}
+                      </span>
+                    ) : null}
                   </Link>
                   <Link
                     href="/chats"
