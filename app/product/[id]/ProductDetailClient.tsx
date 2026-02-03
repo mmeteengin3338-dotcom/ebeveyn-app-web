@@ -1,6 +1,6 @@
 "use client"
 
-import { useEffect, useMemo, useState } from "react"
+import { useEffect, useMemo, useRef, useState } from "react"
 import { useRouter } from "next/navigation"
 import Image from "next/image"
 import Link from "next/link"
@@ -11,6 +11,7 @@ type Product = {
   title: string
   daily_price: number
   image_url?: string | null
+  image_urls?: string[] | null
   description?: string | null
   tags?: string[] | null
   features?: string[] | null
@@ -47,6 +48,8 @@ export default function ProductDetailClient({ id }: { id: string }) {
   const [recentIds, setRecentIds] = useState<string[]>([])
   const [rentedProductIds, setRentedProductIds] = useState<string[]>([])
   const [currentUserEmail, setCurrentUserEmail] = useState<string | null>(null)
+  const [activeImageIndex, setActiveImageIndex] = useState(0)
+  const galleryRef = useRef<HTMLDivElement | null>(null)
 
   const safeId = useMemo(() => String(id ?? "").trim(), [id])
   const chatHref = useMemo(() => {
@@ -114,6 +117,20 @@ export default function ProductDetailClient({ id }: { id: string }) {
 
     return scored.map((x) => x.p).slice(0, 4)
   }, [allProducts, currentUserEmail, product, recentIds, recentProducts, rentedProductIds, safeId])
+
+  const galleryUrls = useMemo(() => {
+    if (!product) return []
+    const urls: string[] = []
+    if (Array.isArray(product.image_urls)) {
+      for (const u of product.image_urls) {
+        const val = String(u || "").trim()
+        if (val) urls.push(val)
+      }
+    }
+    const single = String(product.image_url || "").trim()
+    if (single && !urls.includes(single)) urls.unshift(single)
+    return urls.length > 0 ? urls : ["/products/placeholder.jpg"]
+  }, [product])
 
   useEffect(() => {
     let alive = true
@@ -264,6 +281,11 @@ export default function ProductDetailClient({ id }: { id: string }) {
   }, [product?.id])
 
   useEffect(() => {
+    setActiveImageIndex(0)
+    if (galleryRef.current) galleryRef.current.scrollLeft = 0
+  }, [safeId])
+
+  useEffect(() => {
     if (!safeId || !isUuid(safeId)) return
     const key = `view_ping:${safeId}`
     if (sessionStorage.getItem(key) === "1") return
@@ -371,19 +393,50 @@ export default function ProductDetailClient({ id }: { id: string }) {
   return (
     <div className="px-6 py-10">
       <div className="mx-auto max-w-5xl overflow-hidden rounded-2xl border bg-white shadow-sm">
-        {product.image_url ? (
-          <div className="relative h-80 w-full">
-            <Image
-              src={product.image_url}
-              alt={product.title}
-              fill
-              className="object-cover"
-              sizes="(max-width: 1024px) 100vw, 1024px"
-            />
+        <div className="relative">
+          <div
+            ref={galleryRef}
+            className="flex h-80 snap-x snap-mandatory overflow-x-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
+            onScroll={(e) => {
+              const el = e.currentTarget
+              if (!el.clientWidth) return
+              const idx = Math.round(el.scrollLeft / el.clientWidth)
+              if (idx !== activeImageIndex) setActiveImageIndex(idx)
+            }}
+          >
+            {galleryUrls.map((url, idx) => (
+              <div key={`${url}-${idx}`} className="relative h-80 min-w-full snap-start">
+                <Image
+                  src={url}
+                  alt={`${product.title} ${idx + 1}`}
+                  fill
+                  className="object-cover"
+                  sizes="(max-width: 1024px) 100vw, 1024px"
+                />
+              </div>
+            ))}
           </div>
-        ) : (
-          <div className="flex h-80 w-full items-center justify-center bg-gray-100 text-sm">Gorsel yok</div>
-        )}
+
+          {galleryUrls.length > 1 ? (
+            <div className="absolute bottom-3 left-1/2 flex -translate-x-1/2 gap-2 rounded-full bg-black/35 px-3 py-1.5">
+              {galleryUrls.map((_, idx) => (
+                <button
+                  key={idx}
+                  type="button"
+                  aria-label={`Gorsel ${idx + 1}`}
+                  onClick={() => {
+                    const el = galleryRef.current
+                    if (!el) return
+                    el.scrollTo({ left: el.clientWidth * idx, behavior: "smooth" })
+                  }}
+                  className={`h-2.5 w-2.5 rounded-full transition ${
+                    idx === activeImageIndex ? "bg-white" : "bg-white/45"
+                  }`}
+                />
+              ))}
+            </div>
+          ) : null}
+        </div>
 
         <div className="p-6">
           <div className="flex flex-wrap items-start justify-between gap-4">

@@ -13,6 +13,7 @@ type ProductListItem = {
   daily_price: number
   created_at?: string | null
   image_url?: string | null
+  image_urls?: string[] | null
   description?: string | null
   tags?: string[] | null
   features?: string[] | null
@@ -270,7 +271,13 @@ export default function HomePage() {
                   >
                     <div className="relative h-[280px] w-full bg-black/5">
                       <Image
-                        src={p.image_url || "/products/placeholder.jpg"}
+                        src={
+                          (Array.isArray(p.image_urls)
+                            ? p.image_urls.find((u) => String(u || "").trim().length > 0)
+                            : null) ||
+                          p.image_url ||
+                          "/products/placeholder.jpg"
+                        }
                         alt={p.title}
                         fill
                         className="object-cover transition duration-300 group-hover:scale-[1.04]"

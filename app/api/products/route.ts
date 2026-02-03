@@ -20,7 +20,7 @@ export async function GET(request: Request) {
     }
 
     const initial = await runQuery(
-      "id,title,daily_price,image_url,description,tags,features,created_at,owner_email,view_count"
+      "id,title,daily_price,image_url,image_urls,description,tags,features,created_at,owner_email,view_count"
     )
     let queryError = initial.error
     let productsData = (Array.isArray(initial.data) ? initial.data : []) as unknown as Array<
@@ -29,13 +29,37 @@ export async function GET(request: Request) {
 
     if (queryError && /view_count/i.test(queryError.message)) {
       const fallback = await runQuery(
-        "id,title,daily_price,image_url,description,tags,features,created_at,owner_email"
+        "id,title,daily_price,image_url,image_urls,description,tags,features,created_at,owner_email"
       )
       productsData = ((fallback.data ?? []) as unknown as Array<Record<string, unknown>>).map((p) => ({
         ...p,
         view_count: 0,
       }))
       queryError = fallback.error
+    }
+
+    if (queryError && /image_urls/i.test(queryError.message)) {
+      const fallback = await runQuery(
+        "id,title,daily_price,image_url,description,tags,features,created_at,owner_email,view_count"
+      )
+      productsData = (fallback.data ?? []) as unknown as Array<Record<string, unknown>>
+      queryError = fallback.error
+      if (queryError && /view_count/i.test(queryError.message)) {
+        const fallbackNoView = await runQuery(
+          "id,title,daily_price,image_url,description,tags,features,created_at,owner_email"
+        )
+        productsData = ((fallbackNoView.data ?? []) as unknown as Array<Record<string, unknown>>).map((p) => ({
+          ...p,
+          view_count: 0,
+        }))
+        queryError = fallbackNoView.error
+      }
+      if (!queryError) {
+        productsData = productsData.map((p) => ({
+          ...p,
+          image_urls: p.image_url ? [p.image_url] : [],
+        }))
+      }
     }
 
     if (queryError) {

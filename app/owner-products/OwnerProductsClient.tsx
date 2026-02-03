@@ -22,8 +22,8 @@ export default function OwnerProductsClient() {
   const [description, setDescription] = useState("")
   const [selectedTags, setSelectedTags] = useState<string[]>(["bebek", "ev"])
   const [featuresText, setFeaturesText] = useState("Temiz, Saglam")
-  const [file, setFile] = useState<File | null>(null)
-  const [previewUrl, setPreviewUrl] = useState("")
+  const [files, setFiles] = useState<File[]>([])
+  const [previewUrls, setPreviewUrls] = useState<string[]>([])
 
   const [loading, setLoading] = useState(false)
   const [listLoading, setListLoading] = useState(false)
@@ -37,14 +37,16 @@ export default function OwnerProductsClient() {
   }, [isLoggedIn, router])
 
   useEffect(() => {
-    if (!file) {
-      setPreviewUrl("")
+    if (files.length === 0) {
+      setPreviewUrls([])
       return
     }
-    const url = URL.createObjectURL(file)
-    setPreviewUrl(url)
-    return () => URL.revokeObjectURL(url)
-  }, [file])
+    const urls = files.map((f) => URL.createObjectURL(f))
+    setPreviewUrls(urls)
+    return () => {
+      urls.forEach((u) => URL.revokeObjectURL(u))
+    }
+  }, [files])
 
   async function getToken() {
     const { data } = await supabase.auth.getSession()
@@ -65,6 +67,15 @@ export default function OwnerProductsClient() {
     return data.publicUrl
   }
 
+  async function uploadImages(items: File[]) {
+    const urls: string[] = []
+    for (const item of items) {
+      const url = await uploadImage(item)
+      urls.push(url)
+    }
+    return urls
+  }
+
   async function handleCreate() {
     setErr("")
     setMsg("")
@@ -73,15 +84,16 @@ export default function OwnerProductsClient() {
       setErr("Baslik ve aciklama zorunlu.")
       return
     }
-    if (!file) {
-      setErr("Lutfen bir gorsel sec.")
+    if (files.length === 0) {
+      setErr("Lutfen en az bir gorsel sec.")
       return
     }
 
     setLoading(true)
 
     try {
-      const imageUrl = await uploadImage(file)
+      const uploadedUrls = await uploadImages(files)
+      const imageUrl = uploadedUrls[0]
 
       const token = await getToken()
       if (!token) throw new Error("Token yok. Tekrar giris yap.")
@@ -103,6 +115,7 @@ export default function OwnerProductsClient() {
           title: title.trim(),
           daily_price: Number(dailyPrice),
           image_url: imageUrl,
+          image_urls: uploadedUrls,
           description: description.trim(),
           tags,
           features,
@@ -117,8 +130,8 @@ export default function OwnerProductsClient() {
       setDescription("")
       setSelectedTags(["bebek", "ev"])
       setFeaturesText("Temiz, Saglam")
-      setFile(null)
-      setPreviewUrl("")
+      setFiles([])
+      setPreviewUrls([])
       await loadMyProducts()
     } catch (e: unknown) {
       setErr(e instanceof Error ? e.message : "Hata olustu.")
@@ -258,16 +271,26 @@ export default function OwnerProductsClient() {
         </div>
 
         <div>
-          <p className="mb-2 text-sm font-bold">Gorsel (fotograf ekle)</p>
-          <input type="file" accept="image/*" onChange={(e) => setFile(e.target.files?.[0] ?? null)} />
+          <p className="mb-2 text-sm font-bold">Gorseller (birden fazla secilebilir)</p>
+          <input
+            type="file"
+            multiple
+            accept="image/*"
+            onChange={(e) => setFiles(Array.from(e.target.files ?? []))}
+          />
           <p className="text-muted mt-2 text-xs">Giris yapan kullanici urun gorseli yukleyebilir.</p>
 
-          {previewUrl ? (
-            <img
-              src={previewUrl}
-              alt="Secilen urun gorseli"
-              className="mt-3 h-44 w-full max-w-sm rounded-xl border object-cover"
-            />
+          {previewUrls.length > 0 ? (
+            <div className="mt-3 grid grid-cols-2 gap-3 md:grid-cols-4">
+              {previewUrls.map((url, i) => (
+                <img
+                  key={`${url}-${i}`}
+                  src={url}
+                  alt={`Secilen urun gorseli ${i + 1}`}
+                  className="h-28 w-full rounded-xl border object-cover"
+                />
+              ))}
+            </div>
           ) : null}
         </div>
 

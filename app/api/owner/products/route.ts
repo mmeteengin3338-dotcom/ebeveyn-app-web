@@ -61,6 +61,7 @@ export async function POST(request: Request) {
     const title = asTrimmedString(body.title)
     const daily_price = asNumber(body.daily_price)
     const image_url = asTrimmedString(body.image_url)
+    const image_urls = asStringArray(body.image_urls).filter((u) => isHttpUrl(u))
     const description = asTrimmedString(body.description)
     const tags = asStringArray(body.tags)
     const features = asStringArray(body.features)
@@ -94,6 +95,7 @@ export async function POST(request: Request) {
         title,
         daily_price,
         image_url,
+        image_urls,
         description,
         tags,
         features,
@@ -110,6 +112,23 @@ export async function POST(request: Request) {
       token
     ) {
       insertResult = await createUserTokenClient(token)
+        .from("products")
+        .insert({
+          title,
+          daily_price,
+          image_url,
+          image_urls,
+          description,
+          tags,
+          features,
+          owner_email: guard.email,
+        })
+        .select("*")
+        .single()
+    }
+
+    if (insertResult.error && /image_urls/i.test(insertResult.error.message)) {
+      insertResult = await dbClient
         .from("products")
         .insert({
           title,

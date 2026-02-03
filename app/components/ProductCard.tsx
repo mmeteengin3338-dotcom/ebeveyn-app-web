@@ -6,6 +6,7 @@ type Product = {
   title: string
   daily_price: number
   image_url?: string | null
+  image_urls?: string[] | null
   description?: string | null
   tags?: string[] | null
   owner_email?: string | null
@@ -21,10 +22,12 @@ export default function ProductCard({ product }: { product: Product }) {
     ? `/profile/${encodeURIComponent(profileHandle)}`
     : null
 
-  const imageSrc =
-    product?.image_url && product.image_url.trim().length > 0
+  const firstGalleryImage = Array.isArray(product?.image_urls)
+    ? product.image_urls.find((u) => String(u || "").trim().length > 0)
+    : null
+  const imageSrc = firstGalleryImage || (product?.image_url && product.image_url.trim().length > 0
       ? product.image_url
-      : "/products/placeholder.jpg"
+      : "/products/placeholder.jpg")
 
   return (
     <div className="overflow-hidden rounded-2xl border border-black/10 bg-white shadow-md">

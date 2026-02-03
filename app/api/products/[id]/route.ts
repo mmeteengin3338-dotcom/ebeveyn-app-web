@@ -22,18 +22,48 @@ export async function GET(
 
     let { data, error } = await supabase
       .from("products")
-      .select("id,title,daily_price,image_url,description,tags,features,created_at,owner_email,view_count")
+      .select("id,title,daily_price,image_url,image_urls,description,tags,features,created_at,owner_email,view_count")
       .eq("id", id)
       .single()
 
     if (error && /view_count/i.test(error.message)) {
       const fallback = await supabase
         .from("products")
-        .select("id,title,daily_price,image_url,description,tags,features,created_at,owner_email")
+        .select("id,title,daily_price,image_url,image_urls,description,tags,features,created_at,owner_email")
         .eq("id", id)
         .single()
       data = fallback.data ? { ...fallback.data, view_count: 0 } : null
       error = fallback.error
+    }
+
+    if (error && /image_urls/i.test(error.message)) {
+      const fallback = await supabase
+        .from("products")
+        .select("id,title,daily_price,image_url,description,tags,features,created_at,owner_email,view_count")
+        .eq("id", id)
+        .single()
+      data = fallback.data
+        ? {
+            ...fallback.data,
+            image_urls: fallback.data.image_url ? [fallback.data.image_url] : [],
+          }
+        : null
+      error = fallback.error
+      if (error && /view_count/i.test(error.message)) {
+        const fallbackNoView = await supabase
+          .from("products")
+          .select("id,title,daily_price,image_url,description,tags,features,created_at,owner_email")
+          .eq("id", id)
+          .single()
+        data = fallbackNoView.data
+          ? {
+              ...fallbackNoView.data,
+              image_urls: fallbackNoView.data.image_url ? [fallbackNoView.data.image_url] : [],
+              view_count: 0,
+            }
+          : null
+        error = fallbackNoView.error
+      }
     }
 
     if (error || !data) {
