@@ -152,6 +152,32 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: insertResult.error.message }, { status: 500 })
     }
 
+    // Best-effort in-app notification to the product owner via messages.
+    // If messages table/policies are missing, rental creation should still succeed.
+    const ownerEmail = String(prod.owner_email || "").trim().toLowerCase()
+    const renterEmail = String(authData.user.email || "").trim().toLowerCase()
+    if (ownerEmail && renterEmail && ownerEmail !== renterEmail) {
+      const notifyText = `Yeni kiralama talebi: ${prod.title} (${start_date} - ${end_date})`
+      const notifyInsert = await supabase.from("messages").insert({
+        product_id: prod.id,
+        product_title: prod.title,
+        sender_user_id: authData.user.id,
+        sender_email: renterEmail,
+        receiver_email: ownerEmail,
+        text: notifyText,
+      })
+
+      if (
+        notifyInsert.error &&
+        !/relation .*messages.* does not exist|column .* does not exist|row-level security|permission denied/i.test(
+          notifyInsert.error.message
+        )
+      ) {
+        // Ignore known notification-related setup errors, surface unknown ones for diagnostics.
+        console.warn("Rental notification insert warning:", notifyInsert.error.message)
+      }
+    }
+
     return NextResponse.json({
       rental: {
         ...insertResult.data,
