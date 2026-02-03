@@ -410,7 +410,7 @@ export default function ProductDetailClient({ id }: { id: string }) {
                   src={url}
                   alt={`${product.title} ${idx + 1}`}
                   fill
-                  className="object-cover object-center"
+                  className="object-contain p-2"
                   sizes="(max-width: 1024px) 100vw, 1024px"
                 />
               </div>
