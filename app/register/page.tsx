@@ -1,4 +1,4 @@
-"use client"
+﻿"use client"
 
 import { useEffect, useState } from "react"
 import { useRouter } from "next/navigation"
@@ -46,7 +46,7 @@ export default function RegisterPage() {
     }
   }, [avatarPreviewUrl])
 
-  function isGmailAddress(value: string) {
+  function isValidEmailAddress(value: string) {
     return /^[^\s@]+@gmail\.com$/i.test(value.trim())
   }
 
@@ -115,8 +115,8 @@ export default function RegisterPage() {
 
     const cleanEmail = email.trim().toLowerCase()
     const cleanUsername = normalizeUsername(username)
-    if (!isGmailAddress(cleanEmail)) {
-      setError("Lutfen gecerli bir Gmail adresi girin.")
+    if (!isValidEmailAddress(cleanEmail)) {
+      setError("Lutfen gecerli bir e-posta adresi girin.")
       setBusy(false)
       return
     }
@@ -146,7 +146,7 @@ export default function RegisterPage() {
 
     setStep("verify")
     setResendCooldown(OTP_COOLDOWN_SECONDS)
-    setInfo("Dogrulama kodu Gmail adresinize gonderildi. Lutfen kodu girin.")
+    setInfo("Dogrulama kodu e-posta adresinize gonderildi. Lutfen kodu girin.")
     setBusy(false)
   }
 
@@ -158,7 +158,7 @@ export default function RegisterPage() {
 
     const cleanCode = otpCode.trim()
     if (!cleanCode) {
-      setError("Lutfen Gmail adresinize gelen kodu girin.")
+      setError("Lutfen e-posta adresinize gelen kodu girin.")
       setBusy(false)
       return
     }
@@ -216,7 +216,7 @@ export default function RegisterPage() {
     }
 
     setResendCooldown(OTP_COOLDOWN_SECONDS)
-    setInfo("Yeni kod Gmail adresinize gonderildi.")
+    setInfo("Yeni kod e-posta adresinize gonderildi.")
     setBusy(false)
   }
 
@@ -236,8 +236,8 @@ export default function RegisterPage() {
         <h1 className="text-3xl font-extrabold mb-2">Kayit Ol</h1>
         <p className="text-muted mb-6">
           {step === "form"
-            ? "Gmail adresin ve sifrenle kayit ol."
-            : "Gmail adresine gelen kodu girerek kaydi tamamla."}
+            ? "E-posta adresin ve sifrenle kayit ol."
+            : "E-posta adresine gelen kodu girerek kaydi tamamla."}
         </p>
 
         {step === "form" ? (
@@ -246,7 +246,7 @@ export default function RegisterPage() {
               value={email}
               onChange={(e) => setEmail(e.target.value)}
               type="email"
-              placeholder="Gmail adresi"
+              placeholder="E-posta adresi"
             />
             <input
               value={username}
@@ -337,3 +337,5 @@ export default function RegisterPage() {
     </main>
   )
 }
+
+
