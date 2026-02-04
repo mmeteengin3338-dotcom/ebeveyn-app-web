@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation"
 import Image from "next/image"
 import Link from "next/link"
 import { supabase } from "@/app/lib/supabaseClient"
+import { addToCart, isInCart, type StoredProduct } from "@/app/lib/localCollections"
 
 type Product = {
   id: string
@@ -71,6 +72,7 @@ export default function ProductDetailClient({ id }: { id: string }) {
   const [currentUserId, setCurrentUserId] = useState<string | null>(null)
   const [authToken, setAuthToken] = useState<string | null>(null)
   const [activeImageIndex, setActiveImageIndex] = useState(0)
+  const [inCart, setInCart] = useState(false)
   const galleryRef = useRef<HTMLDivElement | null>(null)
 
   const [comments, setComments] = useState<ProductComment[]>([])
@@ -186,6 +188,23 @@ export default function ProductDetailClient({ id }: { id: string }) {
     if (single && !urls.includes(single)) urls.unshift(single)
     return urls.length > 0 ? urls : ["/products/placeholder.jpg"]
   }, [product])
+  useEffect(() => {
+    const pid = String(product?.id || "").trim()
+    if (!pid) {
+      setInCart(false)
+      return
+    }
+
+    function refreshCartState() {
+      setInCart(isInCart(pid))
+    }
+
+    refreshCartState()
+    window.addEventListener("cart-updated", refreshCartState)
+    return () => {
+      window.removeEventListener("cart-updated", refreshCartState)
+    }
+  }, [product?.id])
 
   useEffect(() => {
     let alive = true
@@ -408,6 +427,24 @@ export default function ProductDetailClient({ id }: { id: string }) {
     if (!product?.id) return
     localStorage.removeItem(RECENTLY_VIEWED_KEY)
     setRecentIds([product.id])
+  }
+
+  function handleAddToCart() {
+    if (!product || inCart) return
+
+    const payload: StoredProduct = {
+      id: product.id,
+      title: product.title,
+      daily_price: Number(product.daily_price || 0),
+      image_url: product.image_url || null,
+      image_urls: Array.isArray(product.image_urls) ? product.image_urls : [],
+      description: product.description || null,
+      tags: Array.isArray(product.tags) ? product.tags : [],
+      owner_email: product.owner_email || null,
+    }
+
+    const added = addToCart(payload)
+    if (added) setInCart(true)
   }
 
   function isOwnComment(comment: ProductComment) {
@@ -755,6 +792,19 @@ export default function ProductDetailClient({ id }: { id: string }) {
               </p>
 
               {product.description ? <p className="mt-3 text-sm opacity-80">{product.description}</p> : null}
+
+              <button
+                type="button"
+                onClick={handleAddToCart}
+                disabled={inCart}
+                className={`mt-4 rounded-xl border px-4 py-2 text-sm font-semibold transition ${
+                  inCart
+                    ? "cursor-default border-emerald-200 bg-emerald-50 text-emerald-700"
+                    : "border-black/20 bg-pink-300 text-black hover:bg-pink-400"
+                }`}
+              >
+                {inCart ? "Sepette" : "Sepete Ekle"}
+              </button>
             </div>
 
             <div className="w-full max-w-xs rounded-2xl border p-4">
@@ -1159,6 +1209,14 @@ export default function ProductDetailClient({ id }: { id: string }) {
     </div>
   )
 }
+
+
+
+
+
+
+
+
 
 
 
