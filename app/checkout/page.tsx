@@ -6,6 +6,11 @@ import Link from "next/link"
 import { useRouter } from "next/navigation"
 import { supabase } from "../lib/supabaseClient"
 import { removeFromCart } from "../lib/localCollections"
+import {
+  getSavedAddresses,
+  type SavedAddress,
+  upsertSavedAddress,
+} from "../lib/userAddresses"
 
 type Product = {
   id: string
@@ -30,6 +35,27 @@ function addDays(base: Date, days: number) {
   return next
 }
 
+function formatTrPhone(input: string) {
+  let digits = String(input || "").replace(/\D/g, "")
+  if (digits.startsWith("90")) digits = digits.slice(2)
+  if (digits.startsWith("0")) digits = digits.slice(1)
+  digits = digits.slice(0, 10)
+
+  let out = "+90"
+  if (digits.length > 0) out += " " + digits.slice(0, 3)
+  if (digits.length > 3) out += " " + digits.slice(3, 6)
+  if (digits.length > 6) out += " " + digits.slice(6, 8)
+  if (digits.length > 8) out += " " + digits.slice(8, 10)
+  return out
+}
+
+function getPhoneDigits(phone: string) {
+  let digits = String(phone || "").replace(/\D/g, "")
+  if (digits.startsWith("90")) digits = digits.slice(2)
+  if (digits.startsWith("0")) digits = digits.slice(1)
+  return digits
+}
+
 export default function CheckoutPage() {
   const router = useRouter()
   const [productId, setProductId] = useState("")
@@ -41,10 +67,15 @@ export default function CheckoutPage() {
 
   const [days, setDays] = useState(1)
   const [fullName, setFullName] = useState("")
-  const [phone, setPhone] = useState("")
+  const [phone, setPhone] = useState("+90")
   const [city, setCity] = useState("")
   const [district, setDistrict] = useState("")
   const [addressLine, setAddressLine] = useState("")
+
+  const [userKey, setUserKey] = useState("")
+  const [savedAddresses, setSavedAddresses] = useState<SavedAddress[]>([])
+  const [selectedAddressId, setSelectedAddressId] = useState("")
+  const [addressMsg, setAddressMsg] = useState<string | null>(null)
 
   const [cardName, setCardName] = useState("")
   const [cardNumber, setCardNumber] = useState("")
@@ -61,6 +92,41 @@ export default function CheckoutPage() {
     setProductId(id)
     setQueryReady(true)
   }, [])
+
+  useEffect(() => {
+    let mounted = true
+
+    async function loadAddressBook() {
+      const { data } = await supabase.auth.getSession()
+      if (!mounted) return
+      const key = String(data.session?.user?.id || data.session?.user?.email || "").trim()
+      setUserKey(key)
+      if (!key) return
+      const list = getSavedAddresses(key)
+      setSavedAddresses(list)
+      if (list.length > 0) setSelectedAddressId(list[0].id)
+    }
+
+    loadAddressBook().catch(() => {
+      // no-op
+    })
+
+    return () => {
+      mounted = false
+    }
+  }, [])
+
+  useEffect(() => {
+    if (!selectedAddressId) return
+    const found = savedAddresses.find((x) => x.id === selectedAddressId)
+    if (!found) return
+    setFullName(found.fullName)
+    setPhone(formatTrPhone(found.phone))
+    setCity(found.city)
+    setDistrict(found.district)
+    setAddressLine(found.addressLine)
+    setAddressMsg("Kayitli adres bilgileri otomatik dolduruldu.")
+  }, [savedAddresses, selectedAddressId])
 
   useEffect(() => {
     if (!queryReady) return
@@ -126,6 +192,37 @@ export default function CheckoutPage() {
     return Math.max(1, days) * Number(product.daily_price || 0)
   }, [days, product])
 
+  function saveCurrentAddress() {
+    setAddressMsg(null)
+    if (!userKey) {
+      setAddressMsg("Adres kaydi icin once giris yapman gerekiyor.")
+      return
+    }
+
+    if (!fullName.trim() || !city.trim() || !district.trim() || !addressLine.trim()) {
+      setAddressMsg("Kaydetmeden once adres alanlarini doldur.")
+      return
+    }
+
+    const phoneDigits = getPhoneDigits(phone)
+    if (phoneDigits.length !== 10) {
+      setAddressMsg("Telefon numarasi 10 hane olmali.")
+      return
+    }
+
+    const updated = upsertSavedAddress(userKey, {
+      fullName: fullName.trim(),
+      phone: formatTrPhone(phone),
+      city: city.trim(),
+      district: district.trim(),
+      addressLine: addressLine.trim(),
+    })
+
+    setSavedAddresses(updated)
+    if (updated.length > 0) setSelectedAddressId(updated[0].id)
+    setAddressMsg("Adres kaydedildi.")
+  }
+
   async function submitOrder(e: FormEvent) {
     e.preventDefault()
     setSubmitError(null)
@@ -136,12 +233,13 @@ export default function CheckoutPage() {
       return
     }
 
-    if (days < 1 || days > 30) {
-      setSubmitError("Gun sayisi 1-30 araliginda olmali.")
+    if (days < 1) {
+      setSubmitError("Gun sayisi en az 1 olmali.")
       return
     }
 
-    if (!fullName.trim() || !phone.trim() || !city.trim() || !district.trim() || !addressLine.trim()) {
+    const phoneDigits = getPhoneDigits(phone)
+    if (!fullName.trim() || phoneDigits.length !== 10 || !city.trim() || !district.trim() || !addressLine.trim()) {
       setSubmitError("Lutfen adres bilgilerini eksiksiz doldur.")
       return
     }
@@ -161,7 +259,7 @@ export default function CheckoutPage() {
     const startDate = new Date()
     const endDate = addDays(startDate, days - 1)
 
-    const offerNote = `Teslimat: ${fullName.trim()} / ${phone.trim()} / ${city.trim()} / ${district.trim()} / ${addressLine.trim()}`
+    const offerNote = `Teslimat: ${fullName.trim()} / ${formatTrPhone(phone)} / ${city.trim()} / ${district.trim()} / ${addressLine.trim()}`
 
     setSubmitting(true)
     try {
@@ -231,24 +329,57 @@ export default function CheckoutPage() {
               <input
                 type="number"
                 min={1}
-                max={30}
                 value={days}
-                onChange={(e) => setDays(Math.max(1, Math.min(30, Number(e.target.value) || 1)))}
-                className="w-28 rounded-xl border px-3 py-2 text-lg font-semibold"
+                onChange={(e) => setDays(Math.max(1, Number(e.target.value) || 1))}
+                className="w-36 rounded-xl border px-3 py-2 text-lg font-semibold"
               />
               <span className="text-black/60">gun</span>
             </div>
           </section>
 
           <section className="rounded-2xl border border-black/10 p-4">
-            <h2 className="text-xl font-semibold">2) Adres Bilgileri</h2>
+            <div className="flex items-center justify-between gap-3">
+              <h2 className="text-xl font-semibold">2) Adres Bilgileri</h2>
+              <button
+                type="button"
+                onClick={saveCurrentAddress}
+                className="rounded-lg border border-pink-300 bg-pink-100 px-3 py-1 text-xs font-semibold text-pink-700 hover:bg-pink-200"
+              >
+                Adresi Kaydet
+              </button>
+            </div>
+
+            {savedAddresses.length > 0 ? (
+              <div className="mt-3">
+                <label className="mb-1 block text-xs font-semibold text-black/60">Kayitli Adreslerim</label>
+                <select
+                  value={selectedAddressId}
+                  onChange={(e) => setSelectedAddressId(e.target.value)}
+                  className="w-full rounded-xl border px-3 py-2"
+                >
+                  <option value="">Adres sec</option>
+                  {savedAddresses.map((item) => (
+                    <option key={item.id} value={item.id}>
+                      {item.fullName} - {item.city}/{item.district}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            ) : null}
+
             <div className="mt-3 grid grid-cols-1 gap-3 md:grid-cols-2">
               <input value={fullName} onChange={(e) => setFullName(e.target.value)} placeholder="Ad Soyad" className="rounded-xl border px-3 py-2" />
-              <input value={phone} onChange={(e) => setPhone(e.target.value)} placeholder="Telefon" className="rounded-xl border px-3 py-2" />
+              <input
+                value={phone}
+                onChange={(e) => setPhone(formatTrPhone(e.target.value))}
+                placeholder="+90 5xx xxx xx xx"
+                className="rounded-xl border px-3 py-2"
+              />
               <input value={city} onChange={(e) => setCity(e.target.value)} placeholder="Il" className="rounded-xl border px-3 py-2" />
               <input value={district} onChange={(e) => setDistrict(e.target.value)} placeholder="Ilce" className="rounded-xl border px-3 py-2" />
             </div>
             <textarea value={addressLine} onChange={(e) => setAddressLine(e.target.value)} rows={3} placeholder="Acik adres" className="mt-3 w-full rounded-xl border px-3 py-2" />
+            {addressMsg ? <p className="mt-2 text-xs font-semibold text-pink-700">{addressMsg}</p> : null}
           </section>
 
           <section className="rounded-2xl border border-black/10 p-4">

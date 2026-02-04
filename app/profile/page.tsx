@@ -1,4 +1,4 @@
-"use client"
+﻿"use client"
 
 import { useCallback, useEffect, useState } from "react"
 import { useRouter } from "next/navigation"
@@ -6,6 +6,7 @@ import Image from "next/image"
 import { supabase } from "@/app/lib/supabaseClient"
 import { useAuth } from "@/app/context/AuthContext"
 import ProductCard from "@/app/components/ProductCard"
+import { getSavedAddresses, removeSavedAddress, type SavedAddress } from "@/app/lib/userAddresses"
 
 type OwnerProduct = {
   id: string
@@ -23,7 +24,7 @@ type OwnerProduct = {
 
 export default function ProfilePage() {
   const router = useRouter()
-  const { isLoggedIn, userEmail, signOut } = useAuth()
+  const { isLoggedIn, userEmail, userId, signOut } = useAuth()
   const [username, setUsername] = useState("")
   const [memberSince, setMemberSince] = useState("")
   const [usernameInput, setUsernameInput] = useState("")
@@ -37,6 +38,8 @@ export default function ProfilePage() {
   const [myProducts, setMyProducts] = useState<OwnerProduct[]>([])
   const [err, setErr] = useState("")
   const [msg, setMsg] = useState("")
+  const [savedAddresses, setSavedAddresses] = useState<SavedAddress[]>([])
+  const [deletingAddressId, setDeletingAddressId] = useState<string | null>(null)
 
   const getToken = useCallback(async () => {
     const { data } = await supabase.auth.getSession()
@@ -84,6 +87,26 @@ export default function ProfilePage() {
       // no-op
     }
   }, [userEmail])
+  const loadSavedAddresses = useCallback(() => {
+    const key = String(userId || userEmail || "").trim()
+    if (!key) {
+      setSavedAddresses([])
+      return
+    }
+    setSavedAddresses(getSavedAddresses(key))
+  }, [userEmail, userId])
+
+  function deleteSavedAddress(addressId: string) {
+    const key = String(userId || userEmail || "").trim()
+    if (!key) return
+    setDeletingAddressId(addressId)
+    try {
+      const next = removeSavedAddress(key, addressId)
+      setSavedAddresses(next)
+    } finally {
+      setDeletingAddressId(null)
+    }
+  }
 
   function normalizeUsername(value: string) {
     return value.trim().toLowerCase()
@@ -234,7 +257,7 @@ export default function ProfilePage() {
     }
     loadMyProfile()
     loadMyProducts()
-  }, [isLoggedIn, loadMyProducts, loadMyProfile, router])
+  }, [isLoggedIn, loadMyProducts, loadMyProfile, loadSavedAddresses, router])
 
   if (!isLoggedIn) {
     return (
@@ -388,3 +411,11 @@ export default function ProfilePage() {
     </main>
   )
 }
+
+
+
+
+
+
+
+
