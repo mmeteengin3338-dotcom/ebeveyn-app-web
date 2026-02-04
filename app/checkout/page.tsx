@@ -1,4 +1,4 @@
-"use client"
+﻿"use client"
 
 import { FormEvent, useEffect, useMemo, useState } from "react"
 import Image from "next/image"
@@ -304,7 +304,7 @@ export default function CheckoutPage() {
             disabled={submitting}
             className="w-full rounded-2xl bg-orange-500 px-5 py-3 text-lg font-bold text-white transition hover:bg-orange-600 disabled:opacity-60"
           >
-            {submitting ? "Siparis tamamlan�yor..." : "Siparisi Tamamla"}
+            {submitting ? "Siparis tamamlanıyor..." : "Siparisi Tamamla"}
           </button>
 
           {submitError ? <p className="text-sm font-semibold text-red-600">{submitError}</p> : null}
@@ -353,3 +353,4 @@ export default function CheckoutPage() {
     </main>
   )
 }
+

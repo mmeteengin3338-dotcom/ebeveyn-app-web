@@ -1,4 +1,4 @@
-import { NextResponse } from "next/server"
+﻿import { NextResponse } from "next/server"
 import { cookies } from "next/headers"
 import { normalizeRentalStatus, type RentalStatus } from "@/app/lib/rentals"
 import { createAnonClient, createUserTokenClient } from "@/app/lib/supabaseServer"
@@ -179,3 +179,4 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: "Sunucu hatasi" }, { status: 500 })
   }
 }
+
