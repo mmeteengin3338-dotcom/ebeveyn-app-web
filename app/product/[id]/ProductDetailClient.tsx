@@ -1,4 +1,4 @@
-"use client"
+﻿"use client"
 
 import { useEffect, useMemo, useRef, useState } from "react"
 import { useRouter } from "next/navigation"
@@ -19,6 +19,17 @@ type Product = {
   view_count?: number | null
 }
 
+type ProductComment = {
+  id: string
+  product_id: string
+  user_id: string
+  user_email: string
+  comment_text: string
+  created_at: string
+  username?: string | null
+  avatar_url?: string | null
+}
+
 const RECENTLY_VIEWED_KEY = "recently_viewed_product_ids"
 const RECENTLY_VIEWED_LIMIT = 8
 
@@ -26,13 +37,25 @@ function isUuid(v: string) {
   return /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(v)
 }
 
-function calcDays(startDate: string, endDate: string) {
-  if (!startDate || !endDate) return null
-  const start = Date.parse(`${startDate}T00:00:00Z`)
-  const end = Date.parse(`${endDate}T00:00:00Z`)
-  if (!Number.isFinite(start) || !Number.isFinite(end)) return null
-  const days = Math.floor((end - start) / 86400000) + 1
-  return days > 0 ? days : null
+function formatCommentDate(value: string) {
+  const date = new Date(value)
+  if (Number.isNaN(date.getTime())) return ""
+  return new Intl.DateTimeFormat("tr-TR", {
+    day: "2-digit",
+    month: "2-digit",
+    year: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
+  }).format(date)
+}
+
+function getCommentAuthor(comment: ProductComment) {
+  const username = String(comment.username || "").trim()
+  if (username) return username
+
+  const email = String(comment.user_email || "").trim()
+  if (!email) return "Kullanici"
+  return email.split("@")[0] || email
 }
 
 export default function ProductDetailClient({ id }: { id: string }) {
@@ -40,33 +63,38 @@ export default function ProductDetailClient({ id }: { id: string }) {
   const [product, setProduct] = useState<Product | null>(null)
   const [loading, setLoading] = useState(true)
   const [msg, setMsg] = useState<string | null>(null)
-  const [rentLoading, setRentLoading] = useState(false)
-  const [showRentForm, setShowRentForm] = useState(false)
-  const [startDate, setStartDate] = useState("")
-  const [endDate, setEndDate] = useState("")
   const [allProducts, setAllProducts] = useState<Product[]>([])
   const [recentIds, setRecentIds] = useState<string[]>([])
   const [rentedProductIds, setRentedProductIds] = useState<string[]>([])
   const [currentUserEmail, setCurrentUserEmail] = useState<string | null>(null)
+  const [currentUserId, setCurrentUserId] = useState<string | null>(null)
+  const [authToken, setAuthToken] = useState<string | null>(null)
   const [activeImageIndex, setActiveImageIndex] = useState(0)
   const galleryRef = useRef<HTMLDivElement | null>(null)
+
+  const [comments, setComments] = useState<ProductComment[]>([])
+  const [commentsLoading, setCommentsLoading] = useState(false)
+  const [commentText, setCommentText] = useState("")
+  const [commentSubmitting, setCommentSubmitting] = useState(false)
+  const [commentError, setCommentError] = useState<string | null>(null)
+  const [commentSuccess, setCommentSuccess] = useState<string | null>(null)
+  const [editingCommentId, setEditingCommentId] = useState<string | null>(null)
+  const [editingText, setEditingText] = useState("")
+  const [commentActionLoadingId, setCommentActionLoadingId] = useState<string | null>(null)
 
   const safeId = useMemo(() => String(id ?? "").trim(), [id])
   const chatHref = useMemo(() => {
     const owner = String(product?.owner_email || "").trim().toLowerCase()
     if (!owner) return ""
-    return `/chats?product=${encodeURIComponent(safeId)}&peer=${encodeURIComponent(owner)}`
+    return "/chats?product=" + encodeURIComponent(safeId) + "&peer=" + encodeURIComponent(owner)
   }, [product?.owner_email, safeId])
+
   const canMessageOwner = useMemo(() => {
     const owner = String(product?.owner_email || "").trim().toLowerCase()
     if (!owner || !currentUserEmail) return false
     return owner !== currentUserEmail.toLowerCase()
   }, [currentUserEmail, product?.owner_email])
-  const rentalDays = useMemo(() => calcDays(startDate, endDate), [startDate, endDate])
-  const totalFee = useMemo(() => {
-    if (!product || !rentalDays) return null
-    return product.daily_price * rentalDays
-  }, [product, rentalDays])
+
   const recentProducts = useMemo(() => {
     if (recentIds.length === 0 || allProducts.length === 0) return []
 
@@ -149,7 +177,7 @@ export default function ProductDetailClient({ id }: { id: string }) {
       }
 
       try {
-        const res = await fetch(`/api/products/${encodeURIComponent(safeId)}`, {
+        const res = await fetch("/api/products/" + encodeURIComponent(safeId), {
           cache: "no-store",
           signal: controller.signal,
         })
@@ -223,11 +251,13 @@ export default function ProductDetailClient({ id }: { id: string }) {
       try {
         const { data } = await supabase.auth.getSession()
         const session = data.session
-        const token = session?.access_token
+        const token = session?.access_token ?? null
         const email = session?.user?.email ?? null
 
         if (!alive) return
         setCurrentUserEmail(email)
+        setCurrentUserId(session?.user?.id ?? null)
+        setAuthToken(token)
 
         if (!token) return
 
@@ -235,7 +265,7 @@ export default function ProductDetailClient({ id }: { id: string }) {
           cache: "no-store",
           signal: controller.signal,
           headers: {
-            Authorization: `Bearer ${token}`,
+            Authorization: "Bearer " + token,
           },
         })
         if (!res.ok) return
@@ -264,6 +294,54 @@ export default function ProductDetailClient({ id }: { id: string }) {
   }, [])
 
   useEffect(() => {
+    let alive = true
+    const controller = new AbortController()
+
+    async function loadComments() {
+      if (!safeId || !isUuid(safeId)) {
+        setComments([])
+        setCommentsLoading(false)
+        return
+      }
+
+      setCommentsLoading(true)
+      try {
+        const res = await fetch("/api/products/" + encodeURIComponent(safeId) + "/comments", {
+          cache: "no-store",
+          signal: controller.signal,
+        })
+        const json = (await res.json().catch(() => ({}))) as {
+          comments?: ProductComment[]
+          error?: string
+        }
+
+        if (!alive) return
+        if (!res.ok) {
+          setCommentError(json.error || "Yorumlar yuklenemedi.")
+          return
+        }
+
+        setCommentError(null)
+        setComments(Array.isArray(json.comments) ? json.comments : [])
+      } catch (e: unknown) {
+        if (!alive) return
+        if (e instanceof Error && e.name === "AbortError") return
+        setCommentError("Yorumlar yuklenemedi.")
+      } finally {
+        if (!alive) return
+        setCommentsLoading(false)
+      }
+    }
+
+    loadComments()
+
+    return () => {
+      alive = false
+      controller.abort()
+    }
+  }, [safeId])
+
+  useEffect(() => {
     if (!product?.id) return
 
     try {
@@ -287,11 +365,11 @@ export default function ProductDetailClient({ id }: { id: string }) {
 
   useEffect(() => {
     if (!safeId || !isUuid(safeId)) return
-    const key = `view_ping:${safeId}`
+    const key = "view_ping:" + safeId
     if (sessionStorage.getItem(key) === "1") return
 
     sessionStorage.setItem(key, "1")
-    fetch(`/api/products/${encodeURIComponent(safeId)}`, {
+    fetch("/api/products/" + encodeURIComponent(safeId), {
       method: "POST",
       cache: "no-store",
     }).catch(() => {
@@ -302,72 +380,200 @@ export default function ProductDetailClient({ id }: { id: string }) {
   function clearRecentlyViewed() {
     if (!product?.id) return
     localStorage.removeItem(RECENTLY_VIEWED_KEY)
-    // Keep only current detail item in memory so the "recent" section stays empty.
     setRecentIds([product.id])
   }
 
-  async function createRental() {
-    if (!showRentForm) {
-      setShowRentForm(true)
-      setMsg(null)
+  function isOwnComment(comment: ProductComment) {
+    return Boolean(currentUserId && comment.user_id === currentUserId)
+  }
+
+  function startEditComment(comment: ProductComment) {
+    setCommentError(null)
+    setCommentSuccess(null)
+    setEditingCommentId(comment.id)
+    setEditingText(comment.comment_text)
+  }
+
+  function cancelEditComment() {
+    setEditingCommentId(null)
+    setEditingText("")
+  }
+
+  async function saveCommentEdit(comment: ProductComment) {
+    const text = editingText.trim()
+    if (text.length < 2 || text.length > 500) {
+      setCommentError("Yorum 2-500 karakter olmali.")
       return
     }
 
-    setRentLoading(true)
-    setMsg(null)
+    let token = authToken
+    if (!token) {
+      const { data } = await supabase.auth.getSession()
+      token = data.session?.access_token ?? null
+      setAuthToken(token)
+    }
 
-    if (!safeId || !isUuid(safeId)) {
-      setMsg("Gecersiz id")
-      setRentLoading(false)
+    if (!token) {
+      router.push("/login?next=/product/" + encodeURIComponent(safeId))
       return
     }
-    if (!startDate || !endDate) {
-      setMsg("Lutfen baslangic ve bitis tarihi secin.")
-      setRentLoading(false)
-      return
-    }
-    if (!rentalDays) {
-      setMsg("Gecersiz tarih araligi.")
-      setRentLoading(false)
-      return
-    }
+
+    setCommentActionLoadingId(comment.id)
+    setCommentError(null)
+    setCommentSuccess(null)
 
     try {
-      const { data } = await supabase.auth.getSession()
-      const token = data.session?.access_token
-      if (!token) {
-        setMsg("Kiralama icin lutfen giris yap.")
-        router.push(`/login?next=/product/${encodeURIComponent(safeId)}`)
+      const res = await fetch("/api/products/" + encodeURIComponent(safeId) + "/comments", {
+        method: "PATCH",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: "Bearer " + token,
+        },
+        body: JSON.stringify({
+          comment_id: comment.id,
+          comment_text: text,
+        }),
+      })
+
+      const json = (await res.json().catch(() => ({}))) as {
+        comment?: ProductComment
+        error?: string
+      }
+
+      if (!res.ok) {
+        setCommentError(json.error || "Yorum guncellenemedi.")
         return
       }
 
-      const res = await fetch("/api/rentals", {
+      const next = json.comment
+        ? (json.comment as ProductComment)
+        : ({ ...comment, comment_text: text } as ProductComment)
+
+      setComments((prev) => prev.map((item) => (item.id === comment.id ? next : item)))
+      setCommentSuccess("Yorum guncellendi.")
+      setEditingCommentId(null)
+      setEditingText("")
+    } catch {
+      setCommentError("Baglanti hatasi.")
+    } finally {
+      setCommentActionLoadingId(null)
+    }
+  }
+
+  async function deleteComment(comment: ProductComment) {
+    let token = authToken
+    if (!token) {
+      const { data } = await supabase.auth.getSession()
+      token = data.session?.access_token ?? null
+      setAuthToken(token)
+    }
+
+    if (!token) {
+      router.push("/login?next=/product/" + encodeURIComponent(safeId))
+      return
+    }
+
+    const confirmed = window.confirm("Bu yorumu silmek istiyor musun?")
+    if (!confirmed) return
+
+    setCommentActionLoadingId(comment.id)
+    setCommentError(null)
+    setCommentSuccess(null)
+
+    try {
+      const res = await fetch("/api/products/" + encodeURIComponent(safeId) + "/comments", {
+        method: "DELETE",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: "Bearer " + token,
+        },
+        body: JSON.stringify({
+          comment_id: comment.id,
+        }),
+      })
+
+      const json = (await res.json().catch(() => ({}))) as {
+        error?: string
+      }
+
+      if (!res.ok) {
+        setCommentError(json.error || "Yorum silinemedi.")
+        return
+      }
+
+      setComments((prev) => prev.filter((item) => item.id !== comment.id))
+      setCommentSuccess("Yorum silindi.")
+      if (editingCommentId === comment.id) {
+        setEditingCommentId(null)
+        setEditingText("")
+      }
+    } catch {
+      setCommentError("Baglanti hatasi.")
+    } finally {
+      setCommentActionLoadingId(null)
+    }
+  }
+
+  async function submitComment() {
+    setCommentError(null)
+    setCommentSuccess(null)
+
+    const text = commentText.trim()
+    if (text.length < 2) {
+      setCommentError("Yorum en az 2 karakter olmali.")
+      return
+    }
+    if (text.length > 500) {
+      setCommentError("Yorum en fazla 500 karakter olmali.")
+      return
+    }
+    if (!safeId || !isUuid(safeId)) {
+      setCommentError("Gecersiz urun id.")
+      return
+    }
+
+    let token = authToken
+    if (!token) {
+      const { data } = await supabase.auth.getSession()
+      token = data.session?.access_token ?? null
+      setAuthToken(token)
+    }
+
+    if (!token) {
+      router.push("/login?next=/product/" + encodeURIComponent(safeId))
+      return
+    }
+
+    setCommentSubmitting(true)
+    try {
+      const res = await fetch("/api/products/" + encodeURIComponent(safeId) + "/comments", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
-          Authorization: `Bearer ${token}`,
+          Authorization: "Bearer " + token,
         },
-        body: JSON.stringify({
-          product_id: safeId,
-          start_date: startDate,
-          end_date: endDate,
-        }),
+        body: JSON.stringify({ comment_text: text }),
       })
-      const json = (await res.json().catch(() => ({}))) as { error?: string }
+
+      const json = (await res.json().catch(() => ({}))) as {
+        comment?: ProductComment
+        error?: string
+      }
 
       if (!res.ok) {
-        setMsg(json.error || "Kiralama talebi olusturulamadi.")
+        setCommentError(json.error || "Yorum gonderilemedi.")
         return
       }
 
-      setMsg("Kiralama talebi olusturuldu.")
-      setShowRentForm(false)
-      setStartDate("")
-      setEndDate("")
+      if (json.comment) {
+        setComments((prev) => [json.comment as ProductComment, ...prev])
+      }
+      setCommentText("")
+      setCommentSuccess("Yorum basariyla eklendi.")
     } catch {
-      setMsg("Baglanti hatasi.")
+      setCommentError("Baglanti hatasi.")
     } finally {
-      setRentLoading(false)
+      setCommentSubmitting(false)
     }
   }
 
@@ -405,10 +611,10 @@ export default function ProductDetailClient({ id }: { id: string }) {
             }}
           >
             {galleryUrls.map((url, idx) => (
-              <div key={`${url}-${idx}`} className="relative h-80 min-w-full snap-start bg-gradient-to-br from-pink-50 to-rose-50">
+              <div key={url + "-" + idx} className="relative h-80 min-w-full snap-start bg-gradient-to-br from-pink-50 to-rose-50">
                 <Image
                   src={url}
-                  alt={`${product.title} ${idx + 1}`}
+                  alt={product.title + " " + (idx + 1)}
                   fill
                   className="object-contain p-2"
                   sizes="(max-width: 1024px) 100vw, 1024px"
@@ -423,15 +629,13 @@ export default function ProductDetailClient({ id }: { id: string }) {
                 <button
                   key={idx}
                   type="button"
-                  aria-label={`Gorsel ${idx + 1}`}
+                  aria-label={"Gorsel " + (idx + 1)}
                   onClick={() => {
                     const el = galleryRef.current
                     if (!el) return
                     el.scrollTo({ left: el.clientWidth * idx, behavior: "smooth" })
                   }}
-                  className={`h-2.5 w-2.5 rounded-full transition ${
-                    idx === activeImageIndex ? "bg-white" : "bg-white/45"
-                  }`}
+                  className={"h-2.5 w-2.5 rounded-full transition " + (idx === activeImageIndex ? "bg-white" : "bg-white/45")}
                 />
               ))}
             </div>
@@ -452,54 +656,36 @@ export default function ProductDetailClient({ id }: { id: string }) {
             <div className="w-full max-w-xs rounded-2xl border p-4">
               <div className="text-sm font-semibold">Islemler</div>
 
-              {showRentForm ? (
-                <div className="mt-3 space-y-2">
-                  <input
-                    type="date"
-                    value={startDate}
-                    onChange={(e) => setStartDate(e.target.value)}
-                    className="w-full rounded-lg border px-3 py-2 text-sm"
-                  />
-                  <input
-                    type="date"
-                    value={endDate}
-                    onChange={(e) => setEndDate(e.target.value)}
-                    className="w-full rounded-lg border px-3 py-2 text-sm"
-                  />
+              <div className="mt-3">
+                <label htmlFor="comment-input" className="mb-1 block text-xs font-medium opacity-80">
+                  Yorum yap
+                </label>
+                <textarea
+                  id="comment-input"
+                  value={commentText}
+                  onChange={(e) => setCommentText(e.target.value)}
+                  maxLength={500}
+                  rows={4}
+                  placeholder="Bu urun hakkindaki yorumunuzu yazin"
+                  className="w-full resize-none rounded-lg border px-3 py-2 text-sm"
+                />
+                <div className="mt-1 text-right text-xs opacity-60">{commentText.length}/500</div>
 
-                  {totalFee !== null ? (
-                    <div className="rounded-lg border bg-black/5 px-3 py-2 text-sm">
-                      Toplam odeme: <span className="font-semibold">{totalFee} TL</span>
-                      <div className="text-xs opacity-70">{rentalDays} gun</div>
-                    </div>
-                  ) : null}
-                </div>
-              ) : null}
-
-              <button
-                className="mt-3 w-full rounded-lg bg-black px-4 py-2 text-sm text-white disabled:opacity-60"
-                onClick={createRental}
-                disabled={rentLoading}
-              >
-                {rentLoading
-                  ? "Gonderiliyor..."
-                  : showRentForm
-                    ? "Talebi gonder"
-                    : "Kiralama baslat"}
-              </button>
-
-              {showRentForm ? (
                 <button
-                  className="mt-2 w-full rounded-lg border px-4 py-2 text-sm"
-                  onClick={() => setShowRentForm(false)}
-                  disabled={rentLoading}
+                  className="mt-2 w-full rounded-lg bg-black px-4 py-2 text-sm font-medium text-white disabled:opacity-60"
+                  onClick={submitComment}
+                  disabled={commentSubmitting}
+                  type="button"
                 >
-                  Vazgec
+                  {commentSubmitting ? "Gonderiliyor..." : "Yorum gonder"}
                 </button>
-              ) : null}
+
+                {commentError ? <p className="mt-2 text-xs text-red-600">{commentError}</p> : null}
+                {commentSuccess ? <p className="mt-2 text-xs text-emerald-600">{commentSuccess}</p> : null}
+              </div>
 
               <button
-                className="mt-2 w-full rounded-lg border px-4 py-2 text-sm"
+                className="mt-3 w-full rounded-lg border px-4 py-2 text-sm"
                 onClick={() => router.push("/")}
               >
                 Ana sayfaya don
@@ -519,14 +705,112 @@ export default function ProductDetailClient({ id }: { id: string }) {
                   </button>
                 </Link>
               ) : null}
-
-              {msg ? <p className="mt-3 text-xs text-red-600">{msg}</p> : null}
             </div>
           </div>
         </div>
       </div>
 
       <div className="mx-auto mt-8 max-w-5xl space-y-8">
+        <section className="rounded-2xl border bg-white p-5 shadow-sm">
+          <h2 className="text-xl font-semibold">Yorumlar</h2>
+          {commentsLoading ? (
+            <p className="mt-2 text-sm opacity-70">Yorumlar yukleniyor...</p>
+          ) : comments.length === 0 ? (
+            <p className="mt-2 text-sm opacity-70">Bu urune henuz yorum yapilmadi.</p>
+          ) : (
+            <div className="mt-4 space-y-3">
+              {comments.map((comment) => {
+                const author = getCommentAuthor(comment)
+                const initial = author.charAt(0).toUpperCase() || "U"
+                const avatar = String(comment.avatar_url || "").trim()
+                const ownComment = isOwnComment(comment)
+
+                return (
+                  <div key={comment.id} className="rounded-xl border border-black/10 bg-black/[0.02] p-3">
+                    <div className="flex items-center gap-3">
+                      {avatar ? (
+                        <img
+                          src={avatar}
+                          alt={author}
+                          className="h-9 w-9 rounded-full border object-cover"
+                          referrerPolicy="no-referrer"
+                        />
+                      ) : (
+                        <div className="flex h-9 w-9 items-center justify-center rounded-full border bg-pink-100 text-xs font-semibold">
+                          {initial}
+                        </div>
+                      )}
+                      <div>
+                        <div className="text-sm font-semibold">{author}</div>
+                        <div className="text-xs opacity-60">{formatCommentDate(comment.created_at)}</div>
+                      </div>
+                    </div>
+
+                    {editingCommentId === comment.id ? (
+                      <div className="mt-2">
+                        <textarea
+                          value={editingText}
+                          onChange={(e) => setEditingText(e.target.value)}
+                          maxLength={500}
+                          rows={3}
+                          className="w-full resize-none rounded-lg border px-3 py-2 text-sm"
+                        />
+                        <div className="mt-1 text-right text-xs opacity-60">{editingText.length}/500</div>
+                      </div>
+                    ) : (
+                      <p className="mt-2 whitespace-pre-wrap text-sm leading-relaxed">{comment.comment_text}</p>
+                    )}
+
+                    {ownComment ? (
+                      <div className="mt-3 flex gap-2">
+                        {editingCommentId === comment.id ? (
+                          <>
+                            <button
+                              type="button"
+                              onClick={() => saveCommentEdit(comment)}
+                              disabled={commentActionLoadingId === comment.id}
+                              className="rounded-md bg-black px-3 py-1.5 text-xs font-medium text-white disabled:opacity-60"
+                            >
+                              {commentActionLoadingId === comment.id ? "Kaydediliyor..." : "Kaydet"}
+                            </button>
+                            <button
+                              type="button"
+                              onClick={cancelEditComment}
+                              disabled={commentActionLoadingId === comment.id}
+                              className="rounded-md border px-3 py-1.5 text-xs"
+                            >
+                              Vazgec
+                            </button>
+                          </>
+                        ) : (
+                          <>
+                            <button
+                              type="button"
+                              onClick={() => startEditComment(comment)}
+                              disabled={commentActionLoadingId === comment.id}
+                              className="rounded-md border px-3 py-1.5 text-xs"
+                            >
+                              Duzenle
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => deleteComment(comment)}
+                              disabled={commentActionLoadingId === comment.id}
+                              className="rounded-md border border-red-200 bg-red-50 px-3 py-1.5 text-xs text-red-700 disabled:opacity-60"
+                            >
+                              {commentActionLoadingId === comment.id ? "Siliniyor..." : "Sil"}
+                            </button>
+                          </>
+                        )}
+                      </div>
+                    ) : null}
+                  </div>
+                )
+              })}
+            </div>
+          )}
+        </section>
+
         <section className="rounded-2xl border bg-white p-5 shadow-sm">
           <div className="flex items-center justify-between gap-3">
             <h2 className="text-xl font-semibold">Son baktiklarin</h2>
@@ -545,7 +829,7 @@ export default function ProductDetailClient({ id }: { id: string }) {
               {recentProducts.map((p) => (
                 <Link
                   key={p.id}
-                  href={`/product/${encodeURIComponent(p.id)}`}
+                  href={"/product/" + encodeURIComponent(p.id)}
                   className="rounded-xl border p-3 transition hover:bg-black/5"
                 >
                   <div className="relative h-28 w-full overflow-hidden rounded-lg bg-black/5">
@@ -578,7 +862,7 @@ export default function ProductDetailClient({ id }: { id: string }) {
               {recommendedProducts.map((p) => (
                 <Link
                   key={p.id}
-                  href={`/product/${encodeURIComponent(p.id)}`}
+                  href={"/product/" + encodeURIComponent(p.id)}
                   className="rounded-xl border p-3 transition hover:bg-black/5"
                 >
                   <div className="relative h-28 w-full overflow-hidden rounded-lg bg-black/5">
@@ -605,3 +889,4 @@ export default function ProductDetailClient({ id }: { id: string }) {
     </div>
   )
 }
+
