@@ -5,6 +5,7 @@ import { asObject, asTrimmedString, isUuid } from "@/app/lib/validation"
 type ProductCommentRow = {
   id: string
   product_id: string
+  parent_comment_id?: string | null
   user_id: string
   user_email: string
   comment_text: string
@@ -21,6 +22,10 @@ type ProfileRow = {
 
 function isMissingCommentsTableError(message: string) {
   return /relation .*product_comments.* does not exist/i.test(message)
+}
+
+function isMissingParentColumnError(message: string) {
+  return /parent_comment_id/i.test(message)
 }
 
 async function requireAuthenticatedUser(request: Request) {
@@ -88,6 +93,32 @@ async function enrichCommentsWithProfiles(
   })
 }
 
+async function selectCommentsWithParentFallback(
+  db: ReturnType<typeof createAnonClient>,
+  productId: string
+) {
+  let { data, error } = await db
+    .from("product_comments")
+    .select("id,product_id,parent_comment_id,user_id,user_email,comment_text,created_at")
+    .eq("product_id", productId)
+    .order("created_at", { ascending: false })
+
+  if (error && isMissingParentColumnError(error.message)) {
+    const fallback = await db
+      .from("product_comments")
+      .select("id,product_id,user_id,user_email,comment_text,created_at")
+      .eq("product_id", productId)
+      .order("created_at", { ascending: false })
+
+    data = fallback.data
+      ? fallback.data.map((row) => ({ ...row, parent_comment_id: null }))
+      : null
+    error = fallback.error
+  }
+
+  return { data, error }
+}
+
 export async function GET(
   _request: Request,
   ctx: { params: Promise<{ id: string }> }
@@ -101,11 +132,7 @@ export async function GET(
     }
 
     const db = createAnonClient()
-    const { data, error } = await db
-      .from("product_comments")
-      .select("id,product_id,user_id,user_email,comment_text,created_at")
-      .eq("product_id", productId)
-      .order("created_at", { ascending: false })
+    const { data, error } = await selectCommentsWithParentFallback(db, productId)
 
     if (error) {
       if (isMissingCommentsTableError(error.message)) {
@@ -147,12 +174,16 @@ export async function POST(
     const rawBody = await request.json().catch(() => null)
     const body = asObject(rawBody)
     const commentText = asTrimmedString(body.comment_text)
+    const parentCommentId = asTrimmedString(body.parent_comment_id)
 
     if (commentText.length < 2) {
       return NextResponse.json({ error: "Yorum en az 2 karakter olmali" }, { status: 400 })
     }
     if (commentText.length > 500) {
       return NextResponse.json({ error: "Yorum en fazla 500 karakter olmali" }, { status: 400 })
+    }
+    if (parentCommentId && !isUuid(parentCommentId)) {
+      return NextResponse.json({ error: "Gecersiz parent_comment_id" }, { status: 400 })
     }
 
     const db = createUserTokenClient(auth.token)
@@ -167,16 +198,62 @@ export async function POST(
       return NextResponse.json({ error: "Urun bulunamadi" }, { status: 404 })
     }
 
-    const { data: inserted, error: insertError } = await db
+    if (parentCommentId) {
+      const { data: parentRow, error: parentError } = await db
+        .from("product_comments")
+        .select("id")
+        .eq("id", parentCommentId)
+        .eq("product_id", productId)
+        .single()
+
+      if (parentError || !parentRow) {
+        if (parentError && isMissingCommentsTableError(parentError.message)) {
+          return NextResponse.json(
+            { error: "product_comments tablosu yok. Supabase SQL adimini uygulayin." },
+            { status: 500 }
+          )
+        }
+        return NextResponse.json({ error: "Cevaplanacak yorum bulunamadi" }, { status: 404 })
+      }
+    }
+
+    const basePayload = {
+      product_id: productId,
+      user_id: auth.userId,
+      user_email: auth.email,
+      comment_text: commentText,
+    }
+
+    const insertPayload = parentCommentId
+      ? { ...basePayload, parent_comment_id: parentCommentId }
+      : basePayload
+
+    let { data: inserted, error: insertError } = await db
       .from("product_comments")
-      .insert({
-        product_id: productId,
-        user_id: auth.userId,
-        user_email: auth.email,
-        comment_text: commentText,
-      })
-      .select("id,product_id,user_id,user_email,comment_text,created_at")
+      .insert(insertPayload)
+      .select("id,product_id,parent_comment_id,user_id,user_email,comment_text,created_at")
       .single()
+
+    if (insertError && isMissingParentColumnError(insertError.message)) {
+      if (parentCommentId) {
+        return NextResponse.json(
+          {
+            error:
+              "Yanit ozelligi icin parent_comment_id kolonu eksik. Supabase SQL migration adimini uygulayin.",
+          },
+          { status: 500 }
+        )
+      }
+
+      const fallback = await db
+        .from("product_comments")
+        .insert(basePayload)
+        .select("id,product_id,user_id,user_email,comment_text,created_at")
+        .single()
+
+      inserted = fallback.data ? { ...fallback.data, parent_comment_id: null } : null
+      insertError = fallback.error
+    }
 
     if (insertError) {
       if (isMissingCommentsTableError(insertError.message)) {
@@ -254,13 +331,25 @@ export async function PATCH(
       )
     }
 
-    const { data: updated, error: updateError } = await db
+    let { data: updated, error: updateError } = await db
       .from("product_comments")
       .update({ comment_text: commentText })
       .eq("id", commentId)
       .eq("product_id", productId)
-      .select("id,product_id,user_id,user_email,comment_text,created_at")
+      .select("id,product_id,parent_comment_id,user_id,user_email,comment_text,created_at")
       .single()
+
+    if (updateError && isMissingParentColumnError(updateError.message)) {
+      const fallback = await db
+        .from("product_comments")
+        .update({ comment_text: commentText })
+        .eq("id", commentId)
+        .eq("product_id", productId)
+        .select("id,product_id,user_id,user_email,comment_text,created_at")
+        .single()
+      updated = fallback.data ? { ...fallback.data, parent_comment_id: null } : null
+      updateError = fallback.error
+    }
 
     if (updateError || !updated) {
       if (updateError && isMissingCommentsTableError(updateError.message)) {

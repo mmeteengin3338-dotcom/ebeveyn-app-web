@@ -22,6 +22,7 @@ type Product = {
 type ProductComment = {
   id: string
   product_id: string
+  parent_comment_id?: string | null
   user_id: string
   user_email: string
   comment_text: string
@@ -81,6 +82,9 @@ export default function ProductDetailClient({ id }: { id: string }) {
   const [editingCommentId, setEditingCommentId] = useState<string | null>(null)
   const [editingText, setEditingText] = useState("")
   const [commentActionLoadingId, setCommentActionLoadingId] = useState<string | null>(null)
+  const [replyingToId, setReplyingToId] = useState<string | null>(null)
+  const [replyText, setReplyText] = useState("")
+  const [replySubmittingId, setReplySubmittingId] = useState<string | null>(null)
 
   const safeId = useMemo(() => String(id ?? "").trim(), [id])
   const chatHref = useMemo(() => {
@@ -94,6 +98,29 @@ export default function ProductDetailClient({ id }: { id: string }) {
     if (!owner || !currentUserEmail) return false
     return owner !== currentUserEmail.toLowerCase()
   }, [currentUserEmail, product?.owner_email])
+
+  const topLevelComments = useMemo(() => {
+    const idSet = new Set(comments.map((comment) => comment.id))
+    return comments
+      .filter((comment) => {
+        const parentId = String(comment.parent_comment_id || "").trim()
+        return !parentId || !idSet.has(parentId)
+      })
+      .sort((a, b) => Date.parse(b.created_at) - Date.parse(a.created_at))
+  }, [comments])
+
+  const repliesByParent = useMemo(() => {
+    const map = new Map<string, ProductComment[]>()
+    const sorted = [...comments].sort((a, b) => Date.parse(a.created_at) - Date.parse(b.created_at))
+    for (const comment of sorted) {
+      const parentId = String(comment.parent_comment_id || "").trim()
+      if (!parentId) continue
+      const list = map.get(parentId) || []
+      list.push(comment)
+      map.set(parentId, list)
+    }
+    return map
+  }, [comments])
 
   const recentProducts = useMemo(() => {
     if (recentIds.length === 0 || allProducts.length === 0) return []
@@ -387,9 +414,23 @@ export default function ProductDetailClient({ id }: { id: string }) {
     return Boolean(currentUserId && comment.user_id === currentUserId)
   }
 
+  function startReply(comment: ProductComment) {
+    setCommentError(null)
+    setCommentSuccess(null)
+    setReplyingToId(comment.id)
+    setReplyText("")
+  }
+
+  function cancelReply() {
+    setReplyingToId(null)
+    setReplyText("")
+  }
+
   function startEditComment(comment: ProductComment) {
     setCommentError(null)
     setCommentSuccess(null)
+    setReplyingToId(null)
+    setReplyText("")
     setEditingCommentId(comment.id)
     setEditingText(comment.comment_text)
   }
@@ -507,10 +548,73 @@ export default function ProductDetailClient({ id }: { id: string }) {
         setEditingCommentId(null)
         setEditingText("")
       }
+      if (replyingToId === comment.id) {
+        setReplyingToId(null)
+        setReplyText("")
+      }
     } catch {
       setCommentError("Baglanti hatasi.")
     } finally {
       setCommentActionLoadingId(null)
+    }
+  }
+
+  async function submitReply(parentComment: ProductComment) {
+    setCommentError(null)
+    setCommentSuccess(null)
+
+    const text = replyText.trim()
+    if (text.length < 2 || text.length > 500) {
+      setCommentError("Yanit 2-500 karakter olmali.")
+      return
+    }
+
+    let token = authToken
+    if (!token) {
+      const { data } = await supabase.auth.getSession()
+      token = data.session?.access_token ?? null
+      setAuthToken(token)
+    }
+
+    if (!token) {
+      router.push("/login?next=/product/" + encodeURIComponent(safeId))
+      return
+    }
+
+    setReplySubmittingId(parentComment.id)
+    try {
+      const res = await fetch("/api/products/" + encodeURIComponent(safeId) + "/comments", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: "Bearer " + token,
+        },
+        body: JSON.stringify({
+          comment_text: text,
+          parent_comment_id: parentComment.id,
+        }),
+      })
+
+      const json = (await res.json().catch(() => ({}))) as {
+        comment?: ProductComment
+        error?: string
+      }
+
+      if (!res.ok) {
+        setCommentError(json.error || "Yanit gonderilemedi.")
+        return
+      }
+
+      if (json.comment) {
+        setComments((prev) => [...prev, json.comment as ProductComment])
+      }
+      setReplyText("")
+      setReplyingToId(null)
+      setCommentSuccess("Yanit eklendi.")
+    } catch {
+      setCommentError("Baglanti hatasi.")
+    } finally {
+      setReplySubmittingId(null)
     }
   }
 
@@ -684,11 +788,16 @@ export default function ProductDetailClient({ id }: { id: string }) {
       </div>
 
       <div className="mx-auto mt-8 max-w-5xl space-y-8">
-        <section className="rounded-2xl border bg-white p-5 shadow-sm">
-          <h2 className="text-xl font-semibold">Yorumlar</h2>
+        <section className="rounded-3xl border border-pink-200/70 bg-gradient-to-br from-white via-pink-50/35 to-rose-50/60 p-6 shadow-[0_28px_90px_-42px_rgba(236,72,153,0.65)]">
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <h2 className="text-2xl font-semibold tracking-tight text-slate-900">Yorumlar ({comments.length})</h2>
+            <span className="rounded-full border border-pink-200 bg-white/85 px-3 py-1 text-xs font-medium text-pink-700">
+              Topluluk geri bildirimi
+            </span>
+          </div>
 
-          <div className="mt-4 rounded-xl border border-black/10 bg-black/[0.02] p-4">
-            <label htmlFor="comment-input" className="mb-2 block text-sm font-medium">
+          <div className="mt-4 rounded-2xl border border-pink-200/70 bg-white/85 p-4 backdrop-blur">
+            <label htmlFor="comment-input" className="mb-2 block text-sm font-medium text-slate-700">
               Yorum yaz
             </label>
             <textarea
@@ -698,12 +807,12 @@ export default function ProductDetailClient({ id }: { id: string }) {
               maxLength={500}
               rows={4}
               placeholder="Bu urun hakkindaki yorumunuzu yazin"
-              className="w-full resize-none rounded-lg border px-3 py-2 text-sm"
+              className="w-full resize-none rounded-lg border border-pink-200 bg-white px-3 py-2 text-sm"
             />
-            <div className="mt-1 text-right text-xs opacity-60">{commentText.length}/500</div>
+            <div className="mt-1 text-right text-xs text-slate-500">{commentText.length}/500</div>
 
             <button
-              className="mt-2 w-full rounded-lg bg-black px-4 py-2 text-sm font-medium text-white disabled:opacity-60 sm:w-auto"
+              className="mt-2 w-full rounded-lg bg-slate-900 px-4 py-2 text-sm font-medium text-white disabled:opacity-60 sm:w-auto"
               onClick={submitComment}
               disabled={commentSubmitting}
               type="button"
@@ -715,16 +824,17 @@ export default function ProductDetailClient({ id }: { id: string }) {
             {commentSuccess ? <p className="mt-2 text-xs text-emerald-600">{commentSuccess}</p> : null}
           </div>
           {commentsLoading ? (
-            <p className="mt-2 text-sm opacity-70">Yorumlar yukleniyor...</p>
-          ) : comments.length === 0 ? (
-            <p className="mt-2 text-sm opacity-70">Bu urune henuz yorum yapilmadi.</p>
+            <p className="mt-4 text-sm text-slate-600">Yorumlar yukleniyor...</p>
+          ) : topLevelComments.length === 0 ? (
+            <p className="mt-4 text-sm text-slate-600">Bu urune henuz yorum yapilmadi.</p>
           ) : (
             <div className="mt-4 space-y-3">
-              {comments.map((comment) => {
+              {topLevelComments.map((comment) => {
                 const author = getCommentAuthor(comment)
                 const initial = author.charAt(0).toUpperCase() || "U"
                 const avatar = String(comment.avatar_url || "").trim()
                 const ownComment = isOwnComment(comment)
+                const replies = repliesByParent.get(comment.id) || []
 
                 return (
                   <div key={comment.id} className="rounded-xl border border-black/10 bg-black/[0.02] p-3">
@@ -754,55 +864,214 @@ export default function ProductDetailClient({ id }: { id: string }) {
                           onChange={(e) => setEditingText(e.target.value)}
                           maxLength={500}
                           rows={3}
-                          className="w-full resize-none rounded-lg border px-3 py-2 text-sm"
+                          className="w-full resize-none rounded-lg border border-pink-200 bg-white px-3 py-2 text-sm"
                         />
-                        <div className="mt-1 text-right text-xs opacity-60">{editingText.length}/500</div>
+                        <div className="mt-1 text-right text-xs text-slate-500">{editingText.length}/500</div>
                       </div>
                     ) : (
                       <p className="mt-2 whitespace-pre-wrap text-sm leading-relaxed">{comment.comment_text}</p>
                     )}
 
-                    {ownComment ? (
-                      <div className="mt-3 flex gap-2">
-                        {editingCommentId === comment.id ? (
-                          <>
-                            <button
-                              type="button"
-                              onClick={() => saveCommentEdit(comment)}
-                              disabled={commentActionLoadingId === comment.id}
-                              className="rounded-md bg-black px-3 py-1.5 text-xs font-medium text-white disabled:opacity-60"
-                            >
-                              {commentActionLoadingId === comment.id ? "Kaydediliyor..." : "Kaydet"}
-                            </button>
-                            <button
-                              type="button"
-                              onClick={cancelEditComment}
-                              disabled={commentActionLoadingId === comment.id}
-                              className="rounded-md border px-3 py-1.5 text-xs"
-                            >
-                              Vazgec
-                            </button>
-                          </>
-                        ) : (
-                          <>
-                            <button
-                              type="button"
-                              onClick={() => startEditComment(comment)}
-                              disabled={commentActionLoadingId === comment.id}
-                              className="rounded-md border px-3 py-1.5 text-xs"
-                            >
-                              Duzenle
-                            </button>
-                            <button
-                              type="button"
-                              onClick={() => deleteComment(comment)}
-                              disabled={commentActionLoadingId === comment.id}
-                              className="rounded-md border border-red-200 bg-red-50 px-3 py-1.5 text-xs text-red-700 disabled:opacity-60"
-                            >
-                              {commentActionLoadingId === comment.id ? "Siliniyor..." : "Sil"}
-                            </button>
-                          </>
-                        )}
+                    <div className="mt-3 flex flex-wrap gap-2">
+                      {editingCommentId === comment.id ? (
+                        <>
+                          <button
+                            type="button"
+                            onClick={() => saveCommentEdit(comment)}
+                            disabled={commentActionLoadingId === comment.id}
+                            className="rounded-lg bg-slate-900 px-3 py-1.5 text-xs font-medium text-white disabled:opacity-60"
+                          >
+                            {commentActionLoadingId === comment.id ? "Kaydediliyor..." : "Kaydet"}
+                          </button>
+                          <button
+                            type="button"
+                            onClick={cancelEditComment}
+                            disabled={commentActionLoadingId === comment.id}
+                            className="rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-xs"
+                          >
+                            Vazgec
+                          </button>
+                        </>
+                      ) : (
+                        <>
+                          <button
+                            type="button"
+                            onClick={() => (replyingToId === comment.id ? cancelReply() : startReply(comment))}
+                            disabled={replySubmittingId === comment.id}
+                            className="rounded-lg border border-pink-200 bg-pink-50 px-3 py-1.5 text-xs font-medium text-pink-700"
+                          >
+                            {replyingToId === comment.id ? "Vazgec" : "Cevapla"}
+                          </button>
+
+                          {ownComment ? (
+                            <>
+                              <button
+                                type="button"
+                                onClick={() => startEditComment(comment)}
+                                disabled={commentActionLoadingId === comment.id}
+                                className="rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-xs"
+                              >
+                                Duzenle
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => deleteComment(comment)}
+                                disabled={commentActionLoadingId === comment.id}
+                                className="rounded-lg border border-red-200 bg-red-50 px-3 py-1.5 text-xs text-red-700 disabled:opacity-60"
+                              >
+                                {commentActionLoadingId === comment.id ? "Siliniyor..." : "Sil"}
+                              </button>
+                            </>
+                          ) : null}
+                        </>
+                      )}
+                    </div>
+
+                    {replyingToId === comment.id ? (
+                      <div className="mt-3 rounded-xl border border-pink-200/70 bg-pink-50/70 p-3">
+                        <textarea
+                          value={replyText}
+                          onChange={(e) => setReplyText(e.target.value)}
+                          maxLength={500}
+                          rows={3}
+                          placeholder={author + " kullanicisina cevap yaz"}
+                          className="w-full resize-none rounded-lg border border-pink-200 bg-white px-3 py-2 text-sm"
+                        />
+                        <div className="mt-1 text-right text-xs text-slate-500">{replyText.length}/500</div>
+                        <button
+                          type="button"
+                          onClick={() => submitReply(comment)}
+                          disabled={replySubmittingId === comment.id}
+                          className="mt-2 rounded-lg bg-slate-900 px-3 py-1.5 text-xs font-medium text-white disabled:opacity-60"
+                        >
+                          {replySubmittingId === comment.id ? "Gonderiliyor..." : "Cevabi gonder"}
+                        </button>
+                      </div>
+                    ) : null}
+
+                    {replies.length > 0 ? (
+                      <div className="mt-4 space-y-3 border-l-2 border-pink-200/80 pl-3">
+                        {replies.map((reply) => {
+                          const replyAuthor = getCommentAuthor(reply)
+                          const replyInitial = replyAuthor.charAt(0).toUpperCase() || "U"
+                          const replyAvatar = String(reply.avatar_url || "").trim()
+                          const ownReply = isOwnComment(reply)
+
+                          return (
+                            <div key={reply.id} className="rounded-xl border border-pink-200/60 bg-white p-3">
+                              <div className="flex items-center gap-2">
+                                {replyAvatar ? (
+                                  <img
+                                    src={replyAvatar}
+                                    alt={replyAuthor}
+                                    className="h-8 w-8 rounded-full border border-pink-200 object-cover"
+                                    referrerPolicy="no-referrer"
+                                  />
+                                ) : (
+                                  <div className="flex h-8 w-8 items-center justify-center rounded-full border border-pink-200 bg-pink-100 text-[11px] font-semibold text-pink-700">
+                                    {replyInitial}
+                                  </div>
+                                )}
+                                <div>
+                                  <div className="text-xs font-semibold text-slate-900">{replyAuthor}</div>
+                                  <div className="text-[11px] text-slate-500">{formatCommentDate(reply.created_at)}</div>
+                                </div>
+                              </div>
+
+                              {editingCommentId === reply.id ? (
+                                <div className="mt-2">
+                                  <textarea
+                                    value={editingText}
+                                    onChange={(e) => setEditingText(e.target.value)}
+                                    maxLength={500}
+                                    rows={3}
+                                    className="w-full resize-none rounded-lg border border-pink-200 bg-white px-3 py-2 text-sm"
+                                  />
+                                  <div className="mt-1 text-right text-xs text-slate-500">{editingText.length}/500</div>
+                                </div>
+                              ) : (
+                                <p className="mt-2 whitespace-pre-wrap text-sm text-slate-700">{reply.comment_text}</p>
+                              )}
+
+                              <div className="mt-2 flex flex-wrap gap-2">
+                                {editingCommentId === reply.id ? (
+                                  <>
+                                    <button
+                                      type="button"
+                                      onClick={() => saveCommentEdit(reply)}
+                                      disabled={commentActionLoadingId === reply.id}
+                                      className="rounded-lg bg-slate-900 px-3 py-1.5 text-xs font-medium text-white disabled:opacity-60"
+                                    >
+                                      {commentActionLoadingId === reply.id ? "Kaydediliyor..." : "Kaydet"}
+                                    </button>
+                                    <button
+                                      type="button"
+                                      onClick={cancelEditComment}
+                                      disabled={commentActionLoadingId === reply.id}
+                                      className="rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-xs"
+                                    >
+                                      Vazgec
+                                    </button>
+                                  </>
+                                ) : (
+                                  <>
+                                    <button
+                                      type="button"
+                                      onClick={() => (replyingToId === reply.id ? cancelReply() : startReply(reply))}
+                                      disabled={replySubmittingId === reply.id}
+                                      className="rounded-lg border border-pink-200 bg-pink-50 px-3 py-1.5 text-xs font-medium text-pink-700"
+                                    >
+                                      {replyingToId === reply.id ? "Vazgec" : "Cevapla"}
+                                    </button>
+
+                                    {ownReply ? (
+                                      <>
+                                        <button
+                                          type="button"
+                                          onClick={() => startEditComment(reply)}
+                                          disabled={commentActionLoadingId === reply.id}
+                                          className="rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-xs"
+                                        >
+                                          Duzenle
+                                        </button>
+                                        <button
+                                          type="button"
+                                          onClick={() => deleteComment(reply)}
+                                          disabled={commentActionLoadingId === reply.id}
+                                          className="rounded-lg border border-red-200 bg-red-50 px-3 py-1.5 text-xs text-red-700 disabled:opacity-60"
+                                        >
+                                          {commentActionLoadingId === reply.id ? "Siliniyor..." : "Sil"}
+                                        </button>
+                                      </>
+                                    ) : null}
+                                  </>
+                                )}
+                              </div>
+
+                              {replyingToId === reply.id ? (
+                                <div className="mt-2 rounded-lg border border-pink-200/70 bg-pink-50/70 p-3">
+                                  <textarea
+                                    value={replyText}
+                                    onChange={(e) => setReplyText(e.target.value)}
+                                    maxLength={500}
+                                    rows={3}
+                                    placeholder={replyAuthor + " kullanicisina cevap yaz"}
+                                    className="w-full resize-none rounded-lg border border-pink-200 bg-white px-3 py-2 text-sm"
+                                  />
+                                  <div className="mt-1 text-right text-xs text-slate-500">{replyText.length}/500</div>
+                                  <button
+                                    type="button"
+                                    onClick={() => submitReply(reply)}
+                                    disabled={replySubmittingId === reply.id}
+                                    className="mt-2 rounded-lg bg-slate-900 px-3 py-1.5 text-xs font-medium text-white disabled:opacity-60"
+                                  >
+                                    {replySubmittingId === reply.id ? "Gonderiliyor..." : "Cevabi gonder"}
+                                  </button>
+                                </div>
+                              ) : null}
+                            </div>
+                          )
+                        })}
                       </div>
                     ) : null}
                   </div>
@@ -890,5 +1159,12 @@ export default function ProductDetailClient({ id }: { id: string }) {
     </div>
   )
 }
+
+
+
+
+
+
+
 
 
