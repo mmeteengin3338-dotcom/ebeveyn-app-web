@@ -656,33 +656,6 @@ export default function ProductDetailClient({ id }: { id: string }) {
             <div className="w-full max-w-xs rounded-2xl border p-4">
               <div className="text-sm font-semibold">Islemler</div>
 
-              <div className="mt-3">
-                <label htmlFor="comment-input" className="mb-1 block text-xs font-medium opacity-80">
-                  Yorum yap
-                </label>
-                <textarea
-                  id="comment-input"
-                  value={commentText}
-                  onChange={(e) => setCommentText(e.target.value)}
-                  maxLength={500}
-                  rows={4}
-                  placeholder="Bu urun hakkindaki yorumunuzu yazin"
-                  className="w-full resize-none rounded-lg border px-3 py-2 text-sm"
-                />
-                <div className="mt-1 text-right text-xs opacity-60">{commentText.length}/500</div>
-
-                <button
-                  className="mt-2 w-full rounded-lg bg-black px-4 py-2 text-sm font-medium text-white disabled:opacity-60"
-                  onClick={submitComment}
-                  disabled={commentSubmitting}
-                  type="button"
-                >
-                  {commentSubmitting ? "Gonderiliyor..." : "Yorum gonder"}
-                </button>
-
-                {commentError ? <p className="mt-2 text-xs text-red-600">{commentError}</p> : null}
-                {commentSuccess ? <p className="mt-2 text-xs text-emerald-600">{commentSuccess}</p> : null}
-              </div>
 
               <button
                 className="mt-3 w-full rounded-lg border px-4 py-2 text-sm"
@@ -713,6 +686,34 @@ export default function ProductDetailClient({ id }: { id: string }) {
       <div className="mx-auto mt-8 max-w-5xl space-y-8">
         <section className="rounded-2xl border bg-white p-5 shadow-sm">
           <h2 className="text-xl font-semibold">Yorumlar</h2>
+
+          <div className="mt-4 rounded-xl border border-black/10 bg-black/[0.02] p-4">
+            <label htmlFor="comment-input" className="mb-2 block text-sm font-medium">
+              Yorum yaz
+            </label>
+            <textarea
+              id="comment-input"
+              value={commentText}
+              onChange={(e) => setCommentText(e.target.value)}
+              maxLength={500}
+              rows={4}
+              placeholder="Bu urun hakkindaki yorumunuzu yazin"
+              className="w-full resize-none rounded-lg border px-3 py-2 text-sm"
+            />
+            <div className="mt-1 text-right text-xs opacity-60">{commentText.length}/500</div>
+
+            <button
+              className="mt-2 w-full rounded-lg bg-black px-4 py-2 text-sm font-medium text-white disabled:opacity-60 sm:w-auto"
+              onClick={submitComment}
+              disabled={commentSubmitting}
+              type="button"
+            >
+              {commentSubmitting ? "Gonderiliyor..." : "Yorum gonder"}
+            </button>
+
+            {commentError ? <p className="mt-2 text-xs text-red-600">{commentError}</p> : null}
+            {commentSuccess ? <p className="mt-2 text-xs text-emerald-600">{commentSuccess}</p> : null}
+          </div>
           {commentsLoading ? (
             <p className="mt-2 text-sm opacity-70">Yorumlar yukleniyor...</p>
           ) : comments.length === 0 ? (
@@ -889,4 +890,5 @@ export default function ProductDetailClient({ id }: { id: string }) {
     </div>
   )
 }
+
 
