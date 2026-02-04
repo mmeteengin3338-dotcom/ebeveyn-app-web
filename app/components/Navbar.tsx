@@ -5,6 +5,7 @@ import { useEffect, useState } from "react"
 import { usePathname, useRouter } from "next/navigation"
 import { useAuth } from "../context/AuthContext"
 import { supabase } from "../lib/supabaseClient"
+import { getCartCount, getFavoriteCount } from "../lib/localCollections"
 
 type MsgLite = {
   id?: string | null
@@ -25,6 +26,8 @@ export default function Navbar() {
   const [pendingRentalCount, setPendingRentalCount] = useState(0)
   const [rentalUpdateCount, setRentalUpdateCount] = useState(0)
   const [searchInput, setSearchInput] = useState("")
+  const [cartCount, setCartCount] = useState(0)
+  const [favoriteCount, setFavoriteCount] = useState(0)
 
   useEffect(() => {
     if (typeof window === "undefined") return
@@ -140,6 +143,28 @@ export default function Navbar() {
       window.removeEventListener("unread-count-changed", onUnreadCountChanged as EventListener)
     }
   }, [])
+
+  useEffect(() => {
+    if (!user) {
+      setCartCount(0)
+      setFavoriteCount(0)
+      return
+    }
+
+    function refreshLocalCollections() {
+      setCartCount(getCartCount())
+      setFavoriteCount(getFavoriteCount())
+    }
+
+    refreshLocalCollections()
+    window.addEventListener("cart-updated", refreshLocalCollections)
+    window.addEventListener("favorites-updated", refreshLocalCollections)
+
+    return () => {
+      window.removeEventListener("cart-updated", refreshLocalCollections)
+      window.removeEventListener("favorites-updated", refreshLocalCollections)
+    }
+  }, [user])
 
   const menuAlertCount = unreadCount + pendingRentalCount + rentalUpdateCount
 
@@ -279,6 +304,30 @@ export default function Navbar() {
                     onClick={() => setMenuOpen(false)}
                   >
                     Profil
+                  </Link>
+                  <Link
+                    href="/favorites"
+                    className={`${menuTabClass("/favorites")} relative`}
+                    onClick={() => setMenuOpen(false)}
+                  >
+                    <span>Favorilerim</span>
+                    {favoriteCount > 0 ? (
+                      <span className="absolute right-3 top-1/2 -translate-y-1/2 rounded-full bg-rose-600 px-2 py-0.5 text-[11px] font-semibold text-white">
+                        {favoriteCount}
+                      </span>
+                    ) : null}
+                  </Link>
+                  <Link
+                    href="/cart"
+                    className={`${menuTabClass("/cart")} relative`}
+                    onClick={() => setMenuOpen(false)}
+                  >
+                    <span>Sepetim</span>
+                    {cartCount > 0 ? (
+                      <span className="absolute right-3 top-1/2 -translate-y-1/2 rounded-full bg-rose-600 px-2 py-0.5 text-[11px] font-semibold text-white">
+                        {cartCount}
+                      </span>
+                    ) : null}
                   </Link>
                   <Link
                     href="/rentals"

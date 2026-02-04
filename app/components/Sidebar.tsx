@@ -37,6 +37,8 @@ export default function Sidebar() {
           {loading ? null : user ? (
             <>
               <NavItem href="/profile" label="Profil" />
+              <NavItem href="/favorites" label="Favorilerim" />
+              <NavItem href="/cart" label="Sepetim" />
               <NavItem href="/rentals" label="Kiralamalarim" />
             </>
           ) : (
