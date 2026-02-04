@@ -47,7 +47,7 @@ export default function RegisterPage() {
   }, [avatarPreviewUrl])
 
   function isValidEmailAddress(value: string) {
-    return /^[^\s@]+@gmail\.com$/i.test(value.trim())
+    return /^[^\s@]+@[^\s@]+\.[^\s@]+$/i.test(value.trim())
   }
 
   function normalizeUsername(value: string) {
@@ -337,5 +337,6 @@ export default function RegisterPage() {
     </main>
   )
 }
+
 
 
