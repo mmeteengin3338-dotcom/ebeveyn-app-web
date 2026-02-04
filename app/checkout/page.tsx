@@ -3,7 +3,7 @@
 import { FormEvent, useEffect, useMemo, useState } from "react"
 import Image from "next/image"
 import Link from "next/link"
-import { useRouter, useSearchParams } from "next/navigation"
+import { useRouter } from "next/navigation"
 import { supabase } from "../lib/supabaseClient"
 import { removeFromCart } from "../lib/localCollections"
 
@@ -32,8 +32,8 @@ function addDays(base: Date, days: number) {
 
 export default function CheckoutPage() {
   const router = useRouter()
-  const params = useSearchParams()
-  const productId = String(params.get("product") || "").trim()
+  const [productId, setProductId] = useState("")
+  const [queryReady, setQueryReady] = useState(false)
 
   const [product, setProduct] = useState<Product | null>(null)
   const [loading, setLoading] = useState(true)
@@ -56,6 +56,15 @@ export default function CheckoutPage() {
   const [submitOk, setSubmitOk] = useState<string | null>(null)
 
   useEffect(() => {
+    if (typeof window === "undefined") return
+    const id = String(new URLSearchParams(window.location.search).get("product") || "").trim()
+    setProductId(id)
+    setQueryReady(true)
+  }, [])
+
+  useEffect(() => {
+    if (!queryReady) return
+
     let alive = true
     const controller = new AbortController()
 
@@ -102,7 +111,7 @@ export default function CheckoutPage() {
       alive = false
       controller.abort()
     }
-  }, [productId])
+  }, [productId, queryReady])
 
   const imageSrc = useMemo(() => {
     if (!product) return "/products/placeholder.jpg"
@@ -186,7 +195,7 @@ export default function CheckoutPage() {
     }
   }
 
-  if (loading) {
+  if (loading || !queryReady) {
     return (
       <main className="min-h-screen bg-gradient-to-br from-pink-200 via-pink-100 to-pink-200 p-6">
         <div className="mx-auto max-w-6xl rounded-3xl border border-black/10 bg-white p-8">Odeme sayfasi yukleniyor...</div>
@@ -234,77 +243,27 @@ export default function CheckoutPage() {
           <section className="rounded-2xl border border-black/10 p-4">
             <h2 className="text-xl font-semibold">2) Adres Bilgileri</h2>
             <div className="mt-3 grid grid-cols-1 gap-3 md:grid-cols-2">
-              <input
-                value={fullName}
-                onChange={(e) => setFullName(e.target.value)}
-                placeholder="Ad Soyad"
-                className="rounded-xl border px-3 py-2"
-              />
-              <input
-                value={phone}
-                onChange={(e) => setPhone(e.target.value)}
-                placeholder="Telefon"
-                className="rounded-xl border px-3 py-2"
-              />
-              <input
-                value={city}
-                onChange={(e) => setCity(e.target.value)}
-                placeholder="Il"
-                className="rounded-xl border px-3 py-2"
-              />
-              <input
-                value={district}
-                onChange={(e) => setDistrict(e.target.value)}
-                placeholder="Ilce"
-                className="rounded-xl border px-3 py-2"
-              />
+              <input value={fullName} onChange={(e) => setFullName(e.target.value)} placeholder="Ad Soyad" className="rounded-xl border px-3 py-2" />
+              <input value={phone} onChange={(e) => setPhone(e.target.value)} placeholder="Telefon" className="rounded-xl border px-3 py-2" />
+              <input value={city} onChange={(e) => setCity(e.target.value)} placeholder="Il" className="rounded-xl border px-3 py-2" />
+              <input value={district} onChange={(e) => setDistrict(e.target.value)} placeholder="Ilce" className="rounded-xl border px-3 py-2" />
             </div>
-            <textarea
-              value={addressLine}
-              onChange={(e) => setAddressLine(e.target.value)}
-              rows={3}
-              placeholder="Acik adres"
-              className="mt-3 w-full rounded-xl border px-3 py-2"
-            />
+            <textarea value={addressLine} onChange={(e) => setAddressLine(e.target.value)} rows={3} placeholder="Acik adres" className="mt-3 w-full rounded-xl border px-3 py-2" />
           </section>
 
           <section className="rounded-2xl border border-black/10 p-4">
             <h2 className="text-xl font-semibold">3) Odeme Bilgileri (Altyapi hazir)</h2>
             <p className="mt-1 text-sm text-black/60">Gercek odeme entegrasyonu sonraki adimda eklenecek.</p>
             <div className="mt-3 grid grid-cols-1 gap-3 md:grid-cols-2">
-              <input
-                value={cardName}
-                onChange={(e) => setCardName(e.target.value)}
-                placeholder="Kart uzerindeki ad"
-                className="rounded-xl border px-3 py-2"
-              />
-              <input
-                value={cardNumber}
-                onChange={(e) => setCardNumber(e.target.value)}
-                placeholder="Kart numarasi"
-                className="rounded-xl border px-3 py-2"
-              />
-              <input
-                value={expiry}
-                onChange={(e) => setExpiry(e.target.value)}
-                placeholder="Son kullanma (AA/YY)"
-                className="rounded-xl border px-3 py-2"
-              />
-              <input
-                value={cvv}
-                onChange={(e) => setCvv(e.target.value)}
-                placeholder="CVV"
-                className="rounded-xl border px-3 py-2"
-              />
+              <input value={cardName} onChange={(e) => setCardName(e.target.value)} placeholder="Kart uzerindeki ad" className="rounded-xl border px-3 py-2" />
+              <input value={cardNumber} onChange={(e) => setCardNumber(e.target.value)} placeholder="Kart numarasi" className="rounded-xl border px-3 py-2" />
+              <input value={expiry} onChange={(e) => setExpiry(e.target.value)} placeholder="Son kullanma (AA/YY)" className="rounded-xl border px-3 py-2" />
+              <input value={cvv} onChange={(e) => setCvv(e.target.value)} placeholder="CVV" className="rounded-xl border px-3 py-2" />
             </div>
           </section>
 
-          <button
-            type="submit"
-            disabled={submitting}
-            className="w-full rounded-2xl bg-orange-500 px-5 py-3 text-lg font-bold text-white transition hover:bg-orange-600 disabled:opacity-60"
-          >
-            {submitting ? "Siparis tamamlanıyor..." : "Siparisi Tamamla"}
+          <button type="submit" disabled={submitting} className="w-full rounded-2xl bg-orange-500 px-5 py-3 text-lg font-bold text-white transition hover:bg-orange-600 disabled:opacity-60">
+            {submitting ? "Siparis tamamlaniyor..." : "Siparisi Tamamla"}
           </button>
 
           {submitError ? <p className="text-sm font-semibold text-red-600">{submitError}</p> : null}
@@ -324,33 +283,18 @@ export default function CheckoutPage() {
           </div>
 
           <div className="mt-4 space-y-2 border-t border-black/10 pt-4 text-sm">
-            <div className="flex justify-between">
-              <span>Gun</span>
-              <span className="font-semibold">{days}</span>
-            </div>
-            <div className="flex justify-between">
-              <span>Ara toplam</span>
-              <span className="font-semibold">{total} TL</span>
-            </div>
-            <div className="flex justify-between">
-              <span>Kargo</span>
-              <span className="font-semibold text-emerald-600">Bedava</span>
-            </div>
+            <div className="flex justify-between"><span>Gun</span><span className="font-semibold">{days}</span></div>
+            <div className="flex justify-between"><span>Ara toplam</span><span className="font-semibold">{total} TL</span></div>
+            <div className="flex justify-between"><span>Kargo</span><span className="font-semibold text-emerald-600">Bedava</span></div>
           </div>
 
           <div className="mt-4 border-t border-black/10 pt-4">
-            <div className="flex justify-between text-xl font-bold">
-              <span>Toplam</span>
-              <span className="text-orange-600">{total} TL</span>
-            </div>
+            <div className="flex justify-between text-xl font-bold"><span>Toplam</span><span className="text-orange-600">{total} TL</span></div>
           </div>
 
-          <Link href="/cart" className="mt-4 inline-flex rounded-xl border border-black/15 px-3 py-2 text-sm">
-            Sepete geri don
-          </Link>
+          <Link href="/cart" className="mt-4 inline-flex rounded-xl border border-black/15 px-3 py-2 text-sm">Sepete geri don</Link>
         </aside>
       </div>
     </main>
   )
 }
-
